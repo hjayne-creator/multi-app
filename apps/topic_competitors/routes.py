@@ -38,7 +38,7 @@ except TypeError:
     openai.api_key = OPENAI_API_KEY
     client = openai
 
-@topic_competitors_bp.route('/results', methods=['POST'])
+@topic_competitors_bp.route('apps/topic-competitors/results', methods=['POST'])
 def analyze_topic():
     main_topic = request.form.get('topic')
     
