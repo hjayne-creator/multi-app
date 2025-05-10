@@ -27,6 +27,7 @@ def index():
 OPENAI_API_KEY = config('OPENAI_API_KEY')
 SERPAPI_API_KEY = config('SERPAPI_API_KEY')
 SEMRUSH_API_KEY = config('SEMRUSH_API_KEY')
+OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-4o-mini')  # Default to gpt-model
 
 # Set up OpenAI
 try:
@@ -83,7 +84,7 @@ def generate_subtopics(main_topic):
     try:
         # New OpenAI API format
         response = client.chat.completions.create(
-            model="gpt-4",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": "You are a content analyst that generates related subtopics."},
                 {"role": "user", "content": f"Generate 5 related subtopics for '{main_topic}'. Return only a list of 5 items, no explanations. Use simple bullet points with dashes (-), not numbered lists."}
@@ -93,7 +94,7 @@ def generate_subtopics(main_topic):
     except AttributeError:
         # Old OpenAI API format
         response = client.ChatCompletion.create(
-            model="gpt-4",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": "You are a content analyst that generates related subtopics."},
                 {"role": "user", "content": f"Generate 5 related subtopics for '{main_topic}'. Return only a list of 5 items, no explanations. Use simple bullet points with dashes (-), not numbered lists."}
@@ -118,7 +119,7 @@ def generate_keywords(main_topic, subtopics):
         try:
             # New OpenAI API format
             response = client.chat.completions.create(
-                model="gpt-4",
+                model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": "You are an SEO analyst that generates search keywords."},
                     {"role": "user", "content": f"Generate 3 SEO search keywords for '{topic}'. Keep keywords short and concise, 5 words or less. Return only a list of 3 items, no explanations. Use simple bullet points with dashes (-), not numbered lists."}
@@ -128,7 +129,7 @@ def generate_keywords(main_topic, subtopics):
         except AttributeError:
             # Old OpenAI API format
             response = client.ChatCompletion.create(
-                model="gpt-4",
+                model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": "You are an SEO analyst that generates search keywords."},
                     {"role": "user", "content": f"Generate 3 SEO search keywords for '{topic}'. Keep keywords short and concise, 5 words or less. Return only a list of 3 items, no explanations. Use simple bullet points with dashes (-), not numbered lists."}
@@ -326,7 +327,7 @@ def generate_summary(top_domains):
     try:
         # New OpenAI API format
         response = client.chat.completions.create(
-            model="gpt-4",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": "You are a helpful SEO analyst."},
                 {"role": "user", "content": prompt}
@@ -336,7 +337,7 @@ def generate_summary(top_domains):
     except AttributeError:
         # Old OpenAI API format
         response = client.ChatCompletion.create(
-            model="gpt-4",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": "You are a helpful SEO analyst."},
                 {"role": "user", "content": prompt}
