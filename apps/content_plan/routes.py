@@ -11,12 +11,12 @@ import re
 from datetime import datetime
 from dotenv import load_dotenv
 from apps.content_plan.config import get_config
-from utils.scraper import scrape_website, validate_url
-from utils.search import search_serpapi, deduplicate_results
-from utils.workflow import WorkflowManager
-from models import db, Job, Theme
-from tasks import celery, process_workflow_task, continue_workflow_after_selection_task
-from prompts import (
+from apps.content_plan.utils.scraper import scrape_website, validate_url
+from apps.content_plan.utils.search import search_serpapi, deduplicate_results
+from apps.content_plan.utils.workflow import WorkflowManager
+from apps.content_plan.models import db, Job, Theme
+from apps.content_plan.tasks import celery, process_workflow_task, continue_workflow_after_selection_task
+from apps.content_plan.prompts import (
     BRAND_BRIEF_PROMPT,
     SEARCH_ANALYSIS_PROMPT,
     CONTENT_ANALYST_PROMPT,
@@ -25,6 +25,9 @@ from prompts import (
     CONTENT_EDITOR_PROMPT
 )
 from sqlalchemy import text
+
+# Create CSRF protection instance
+csrf = CSRFProtect()
 
 # Create Blueprint
 content_plan_bp = Blueprint('content_plan', __name__,
@@ -493,6 +496,9 @@ def init_app(app):
     
     # Register Celery with Flask app
     app.extensions['celery'] = celery
+    
+    # Initialize Flask-Migrate with the correct migrations directory
+    migrate = Migrate(app, db, directory='apps/content_plan/migrations')
     
     # Run migrations on startup
     with app.app_context():

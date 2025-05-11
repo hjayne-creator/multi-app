@@ -1,16 +1,16 @@
 import json
 import logging
 from flask import current_app
-from models import db, Job, Theme
-from utils.scraper import scrape_website
-from utils.search import search_serpapi, deduplicate_results
-from utils.workflow import WorkflowManager
-from utils.agents import run_agent_with_openai
+from apps.content_plan.models import db, Job, Theme
+from apps.content_plan.utils.scraper import scrape_website
+from apps.content_plan.utils.search import search_serpapi, deduplicate_results
+from apps.content_plan.utils.workflow import WorkflowManager
+from apps.content_plan.utils.agents import run_agent_with_openai
 from datetime import datetime
 import traceback
 from dotenv import load_dotenv
 from celery import Celery
-from prompts import (
+from apps.content_plan.prompts import (
     BRAND_BRIEF_PROMPT,
     SEARCH_ANALYSIS_PROMPT,
     CONTENT_ANALYST_PROMPT,

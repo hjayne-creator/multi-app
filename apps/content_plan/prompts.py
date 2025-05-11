@@ -1,6 +1,8 @@
 """Canonical prompts for the content planning workflow."""
 
-from llm_blacklist import LLM_BLACKLISTED_TERMS
+import os
+from dotenv import load_dotenv
+from apps.content_plan.llm_blacklist import LLM_BLACKLISTED_TERMS
 
 BRAND_BRIEF_PROMPT = """You are a research agent specialized in analyzing website content to create comprehensive brand briefs.
 
