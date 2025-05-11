@@ -10,7 +10,7 @@ import os
 import re
 from datetime import datetime
 from dotenv import load_dotenv
-from .config import get_config
+from apps.content_plan.config import get_config
 from utils.scraper import scrape_website, validate_url
 from utils.search import search_serpapi, deduplicate_results
 from utils.workflow import WorkflowManager
