@@ -68,7 +68,17 @@ class Config:
         if db_url.startswith('postgres://'):
             db_url = db_url.replace('postgres://', 'postgresql://', 1)
         
-        logging.info(f"Using database URL: {db_url}")
+        # Log the database URL (with sensitive information redacted)
+        safe_url = db_url
+        if '@' in safe_url:
+            # Redact password from URL for logging
+            protocol, rest = safe_url.split('://')
+            user_pass, host = rest.split('@')
+            user, _ = user_pass.split(':')
+            safe_url = f"{protocol}://{user}:****@{host}"
+        logging.info(f"Using database URL: {safe_url}")
+        
+        # Set the database URL in the app config
         app.config['SQLALCHEMY_DATABASE_URI'] = db_url
         
         # Log the configuration (without sensitive values)
@@ -77,6 +87,47 @@ class Config:
         logging.info(f"- OpenAI API key set: {'Yes' if cls.OPENAI_API_KEY else 'No'}")
         logging.info(f"- SerpAPI key set: {'Yes' if cls.SERPAPI_API_KEY else 'No'}")
         logging.info(f"- Using OpenAI model: {cls.OPENAI_MODEL}")
+        
+        # Test database connection with detailed error handling
+        try:
+            from sqlalchemy import create_engine
+            import psycopg2
+            
+            # Log connection attempt
+            logging.info("Attempting to connect to database...")
+            
+            # Create engine with connection timeout
+            engine = create_engine(
+                db_url,
+                connect_args={
+                    'connect_timeout': 10,  # 10 second timeout
+                    'application_name': 'content_planner_app'  # Identify the connection
+                }
+            )
+            
+            # Test connection
+            with engine.connect() as conn:
+                conn.execute("SELECT 1")
+                logging.info("Database connection test successful")
+                
+                # Get database version
+                version = conn.execute("SELECT version()").scalar()
+                logging.info(f"Connected to PostgreSQL version: {version}")
+                
+        except psycopg2.OperationalError as e:
+            error_msg = f"Database connection failed: {str(e)}"
+            logging.error(error_msg)
+            if os.environ.get('RENDER'):
+                raise ValueError(error_msg)
+            else:
+                logging.warning("Continuing despite database connection failure (development mode)")
+        except Exception as e:
+            error_msg = f"Unexpected error during database connection: {str(e)}"
+            logging.error(error_msg)
+            if os.environ.get('RENDER'):
+                raise ValueError(error_msg)
+            else:
+                logging.warning("Continuing despite database connection failure (development mode)")
 
 class DevelopmentConfig(Config):
     """Development configuration."""
