@@ -491,6 +491,9 @@ def cleanup_jobs():
 
 def init_app(app):
     """Initialize the content plan blueprint with the Flask app"""
+    # Initialize SQLAlchemy with Flask app
+    db.init_app(app)
+    
     # Initialize Celery with Flask app
     celery.conf.update(app.config)
     
