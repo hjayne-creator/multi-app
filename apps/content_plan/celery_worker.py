@@ -1,5 +1,5 @@
-from app import app
-from celery_config import celery
+from apps import create_app
+from apps.content_plan.tasks import celery
 import os
 import logging
 import redis
@@ -32,6 +32,9 @@ def test_redis_connection(url, max_retries=5, retry_delay=5):
             logger.error(f"Unexpected error testing Redis connection: {str(e)}")
             return False
     return False
+
+# Create the Flask app
+app = create_app()
 
 # Create Flask application context
 app.app_context().push()
@@ -83,4 +86,7 @@ celery = celery_init_app(app)
 
 if __name__ == '__main__':
     logger.info("Starting Celery worker...")
-    celery.worker_main(['worker', '--loglevel=debug']) 
+    celery.worker_main(['worker', '--loglevel=debug'])
+
+# This file is used by Render to start the Celery worker
+# It imports and re-exports the Celery instance from your tasks module 

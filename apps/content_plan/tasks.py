@@ -45,6 +45,7 @@ celery.conf.update(
     task_time_limit=3600,
     task_soft_time_limit=3300,
     worker_prefetch_multiplier=1,
+    broker_connection_retry_on_startup=True
 )
 
 def add_message_to_job(job, message):
