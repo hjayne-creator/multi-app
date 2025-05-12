@@ -90,7 +90,7 @@ class Config:
         
         # Test database connection with detailed error handling
         try:
-            from sqlalchemy import create_engine
+            from sqlalchemy import create_engine, text
             import psycopg2
             
             # Log connection attempt
@@ -107,11 +107,11 @@ class Config:
             
             # Test connection
             with engine.connect() as conn:
-                conn.execute("SELECT 1")
+                conn.execute(text("SELECT 1"))
                 logging.info("Database connection test successful")
                 
                 # Get database version
-                version = conn.execute("SELECT version()").scalar()
+                version = conn.execute(text("SELECT version()")).scalar()
                 logging.info(f"Connected to PostgreSQL version: {version}")
                 
         except psycopg2.OperationalError as e:
