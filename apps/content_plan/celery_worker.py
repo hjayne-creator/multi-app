@@ -1,4 +1,4 @@
-from apps import create_app
+from apps import create_app, db
 from apps.content_plan.tasks import celery
 import os
 import logging
@@ -37,6 +37,10 @@ app = create_app()
 
 # Create Flask application context
 app.app_context().push()
+
+# Initialize database
+with app.app_context():
+    db.init_app(app)
 
 # Get Redis URL and test connection
 redis_url = os.environ.get('CELERY_BROKER_URL', '')

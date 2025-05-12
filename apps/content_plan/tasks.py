@@ -100,10 +100,14 @@ def process_workflow_task(self, job_id):
     logger.info(f"Starting process_workflow_task for job_id: {job_id}")
     
     # Get the Flask app context
+    from apps import create_app, db
     app = create_app()
     
     try:
         with app.app_context():
+            # Initialize database
+            db.init_app(app)
+            
             # Get job and create a new session
             job = Job.query.get_or_404(job_id)
             
