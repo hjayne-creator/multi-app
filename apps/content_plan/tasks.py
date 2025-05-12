@@ -20,6 +20,8 @@ from apps.content_plan.prompts import (
 )
 import os
 import time
+from flask import current_app
+from apps import create_app
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -97,7 +99,7 @@ def process_workflow_task(self, job_id):
     logger.info(f"Starting process_workflow_task for job_id: {job_id}")
     
     # Get the Flask app context
-    from app import app
+    app = create_app()
     
     try:
         with app.app_context():
@@ -384,9 +386,9 @@ def process_workflow_task(self, job_id):
 @celery.task(bind=True, autoretry_for=(), retry=False)
 def continue_workflow_after_selection_task(self, job_id):
     """Celery task to continue workflow after theme selection, using in_progress flag for concurrency control"""
-    from app import app
+    from flask import current_app
     
-    with app.app_context():
+    with current_app.app_context():
         db.session.expire_all()
         # Atomically claim the job for processing
         result = db.session.query(Job).filter(
