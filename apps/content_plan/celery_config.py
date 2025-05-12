@@ -2,6 +2,7 @@ import os
 from celery import Celery
 from celery.signals import after_setup_logger
 import logging
+from apps import create_app
 
 # Get Redis URL from environment
 redis_url = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
@@ -13,6 +14,9 @@ celery = Celery(
     broker=redis_url,
     backend=redis_url
 )
+
+# Create Flask app
+flask_app = create_app()
 
 # Configure Celery with more robust settings
 celery.conf.update(

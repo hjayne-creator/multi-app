@@ -22,6 +22,7 @@ import os
 import time
 from flask import current_app
 from apps import create_app
+from apps.content_plan.celery_config import celery, flask_app
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -99,12 +100,8 @@ def process_workflow_task(self, job_id):
     """Celery task to process the content workflow"""
     logger.info(f"Starting process_workflow_task for job_id: {job_id}")
     
-    # Get the Flask app context
-    from apps import create_app
-    app = create_app()
-    
     try:
-        with app.app_context():
+        with flask_app.app_context():
             # Get job and create a new session
             job = Job.query.get_or_404(job_id)
             

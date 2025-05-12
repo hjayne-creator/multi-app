@@ -1,5 +1,5 @@
 from apps import create_app
-from apps.content_plan.tasks import celery
+from apps.content_plan.celery_config import celery, flask_app
 
 # Create the Flask app
 app = create_app()
