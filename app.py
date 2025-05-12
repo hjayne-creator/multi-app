@@ -1,8 +1,13 @@
 from flask import Flask
 from apps.content_plan.config import get_config
+from flask_wtf.csrf import CSRFProtect
 
 def create_app():
     app = Flask(__name__)
+    
+    # Initialize CSRF protection
+    csrf = CSRFProtect()
+    csrf.init_app(app)
     
     # Load configuration
     config = get_config()
