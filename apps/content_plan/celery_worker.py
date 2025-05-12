@@ -5,7 +5,6 @@ import logging
 import redis
 from urllib.parse import urlparse
 import time
-from config import get_config
 
 # Configure logging
 logging.basicConfig(
@@ -38,10 +37,6 @@ app = create_app()
 
 # Create Flask application context
 app.app_context().push()
-
-# Initialize database configuration
-config = get_config()
-config.init_app(app)
 
 # Get Redis URL and test connection
 redis_url = os.environ.get('CELERY_BROKER_URL', '')
