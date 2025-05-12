@@ -38,10 +38,6 @@ app = create_app()
 # Create Flask application context
 app.app_context().push()
 
-# Initialize database
-with app.app_context():
-    db.init_app(app)
-
 # Get Redis URL and test connection
 redis_url = os.environ.get('CELERY_BROKER_URL', '')
 if not redis_url:
