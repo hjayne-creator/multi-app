@@ -95,12 +95,12 @@ def index():
             
             if not keywords:
                 flash("Please enter at least one valid keyword", "error")
-                return render_template('index.html', form=form)
+                return render_template('content_plan_index.html', form=form)
             
             website_url = form.website_url.data
             if not validate_url(website_url):
                 flash("Please enter a valid URL including http:// or https://", "error")
-                return render_template('index.html', form=form)
+                return render_template('content_plan_index.html', form=form)
             
             # Create new job in database
             new_job = Job(
@@ -126,13 +126,13 @@ def index():
         except Exception as e:
             current_app.logger.error(f"Error creating job: {str(e)}")
             flash(f"An error occurred: {str(e)}", "error")
-            return render_template('index.html', form=form)
+            return render_template('content_plan_index.html', form=form)
     else:
         if request.method == 'POST':
             current_app.logger.info("Form validation failed")
             flash("Please correct the errors in the form", "error")
     
-    return render_template('index.html', form=form)
+    return render_template('content_plan_index.html', form=form)
 
 @content_plan_bp.route('/process/<job_id>', methods=['GET'])
 def process_job(job_id):
@@ -148,7 +148,7 @@ def process_job(job_id):
         # Start processing in Celery
         process_workflow_task.delay(job_id)
     
-    return render_template('processing.html', job_id=job_id, job=job.to_dict())
+    return render_template('content_plan_processing.html', job_id=job_id, job=job.to_dict())
 
 @content_plan_bp.route('/job-status/<job_id>', methods=['GET'])
 def get_job_status(job_id):
@@ -195,7 +195,7 @@ def results(job_id):
 
     job_dict = job.to_dict()
     job_dict['final_plan'] = combined_plan
-    return render_template('results.html', job=job_dict)
+    return render_template('content_plan_results.html', job=job_dict)
 
 @content_plan_bp.route('/api/theme-selection/<job_id>', methods=['POST'])
 @csrf.exempt
