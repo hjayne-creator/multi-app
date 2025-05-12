@@ -33,7 +33,8 @@ csrf = CSRFProtect()
 content_plan_bp = Blueprint('content_plan', __name__,
                    template_folder='templates',
                    static_folder='static',
-                   static_url_path='/apps/content-plan/static')
+                   static_url_path='/apps/content-plan/static',
+                   url_prefix='/apps/content-plan')
 
 # Constants for merging article ideas into the final plan
 FINAL_PLAN_SPLIT_MARKER = "[This section will be provided separately and should not be generated.]"
@@ -72,67 +73,72 @@ def merge_final_plan_with_articles(final_plan, article_ideas, split_marker, sect
 
 @content_plan_bp.route('/', methods=['GET', 'POST'])
 def index():
-    form = ContentWorkflowForm()
-    
-    # Debug information
-    current_app.logger.info(f"Method: {request.method}")
-    if request.method == 'POST':
-        current_app.logger.info(f"Form data: {request.form}")
-        current_app.logger.info(f"Form validation: {form.validate()}")
-        if form.errors:
-            current_app.logger.info(f"Form errors: {form.errors}")
-    
-    if form.validate_on_submit():
-        current_app.logger.info("Form validated successfully")
+    try:
+        form = ContentWorkflowForm()
         
-        try:
-            # Create a unique job ID
-            job_id = str(uuid.uuid4())
-            
-            # Process keywords
-            keywords_text = form.keywords.data
-            keywords = [k.strip() for k in re.split(r'[,\n]', keywords_text) if k.strip()]
-            
-            if not keywords:
-                flash("Please enter at least one valid keyword", "error")
-                return render_template('content_plan_index.html', form=form)
-            
-            website_url = form.website_url.data
-            if not validate_url(website_url):
-                flash("Please enter a valid URL including http:// or https://", "error")
-                return render_template('content_plan_index.html', form=form)
-            
-            # Create new job in database
-            new_job = Job(
-                id=job_id,
-                status='initialized',
-                website_url=website_url,
-                keywords=keywords,
-                current_phase='INITIALIZATION',
-                progress=0,
-                workflow_data={},
-                messages=[{
-                    'text': "Job initialized, preparing to process...",
-                    'timestamp': datetime.utcnow().isoformat()
-                }]
-            )
-            db.session.add(new_job)
-            db.session.commit()
-            
-            current_app.logger.info(f"Created job {job_id}")
-            
-            # Redirect to processing page
-            return redirect(url_for('content_plan.process_job', job_id=job_id))
-        except Exception as e:
-            current_app.logger.error(f"Error creating job: {str(e)}")
-            flash(f"An error occurred: {str(e)}", "error")
-            return render_template('content_plan_index.html', form=form)
-    else:
+        # Debug information
+        current_app.logger.info(f"Method: {request.method}")
         if request.method == 'POST':
-            current_app.logger.info("Form validation failed")
-            flash("Please correct the errors in the form", "error")
-    
-    return render_template('content_plan_index.html', form=form)
+            current_app.logger.info(f"Form data: {request.form}")
+            current_app.logger.info(f"Form validation: {form.validate()}")
+            if form.errors:
+                current_app.logger.info(f"Form errors: {form.errors}")
+        
+        if form.validate_on_submit():
+            current_app.logger.info("Form validated successfully")
+            
+            try:
+                # Create a unique job ID
+                job_id = str(uuid.uuid4())
+                
+                # Process keywords
+                keywords_text = form.keywords.data
+                keywords = [k.strip() for k in re.split(r'[,\n]', keywords_text) if k.strip()]
+                
+                if not keywords:
+                    flash("Please enter at least one valid keyword", "error")
+                    return render_template('content_plan_index.html', form=form)
+                
+                website_url = form.website_url.data
+                if not validate_url(website_url):
+                    flash("Please enter a valid URL including http:// or https://", "error")
+                    return render_template('content_plan_index.html', form=form)
+                
+                # Create new job in database
+                new_job = Job(
+                    id=job_id,
+                    status='initialized',
+                    website_url=website_url,
+                    keywords=keywords,
+                    current_phase='INITIALIZATION',
+                    progress=0,
+                    workflow_data={},
+                    messages=[{
+                        'text': "Job initialized, preparing to process...",
+                        'timestamp': datetime.utcnow().isoformat()
+                    }]
+                )
+                db.session.add(new_job)
+                db.session.commit()
+                
+                current_app.logger.info(f"Created job {job_id}")
+                
+                # Redirect to processing page
+                return redirect(url_for('content_plan.process_job', job_id=job_id))
+            except Exception as e:
+                current_app.logger.error(f"Error creating job: {str(e)}")
+                flash(f"An error occurred: {str(e)}", "error")
+                return render_template('content_plan_index.html', form=form)
+        else:
+            if request.method == 'POST':
+                current_app.logger.info("Form validation failed")
+                flash("Please correct the errors in the form", "error")
+        
+        return render_template('content_plan_index.html', form=form)
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error in index route: {str(e)}")
+        flash("An unexpected error occurred. Please try again.", "error")
+        return render_template('content_plan_index.html', form=ContentWorkflowForm())
 
 @content_plan_bp.route('/process/<job_id>', methods=['GET'])
 def process_job(job_id):
