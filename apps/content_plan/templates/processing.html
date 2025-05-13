@@ -204,11 +204,13 @@ function checkJobStatus() {
         
         // Submit selection
         console.log('Sending theme selection request...');
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         fetch('/apps/content-plan/api/theme-selection/{{ job_id }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({ theme_number: themeNumber.toString() })
         })

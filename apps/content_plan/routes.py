@@ -521,6 +521,9 @@ def init_app(app):
     # Initialize Flask-Migrate with the correct migrations directory
     migrate = Migrate(app, db, directory='apps/content_plan/migrations')
     
+    # Initialize CSRF protection
+    csrf.init_app(app)
+    
     # Run migrations on startup
     with app.app_context():
         try:
