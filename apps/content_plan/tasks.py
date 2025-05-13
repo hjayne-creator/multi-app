@@ -21,13 +21,16 @@ import os
 import time
 from flask import current_app
 from apps import create_app
-from apps.content_plan.celery_config import celery, flask_app
+from apps.content_plan.celery_config import celery
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
+
+# Create Flask app for Celery tasks
+flask_app = create_app()
 
 def add_message_to_job(job, message):
     """
