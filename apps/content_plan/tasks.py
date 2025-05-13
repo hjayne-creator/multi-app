@@ -20,7 +20,7 @@ from apps.content_plan.prompts import (
 import os
 import time
 from flask import current_app
-from apps import create_app
+from apps import create_app, db
 from apps.content_plan.celery_config import celery
 
 # Configure logging
@@ -29,18 +29,8 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-def get_flask_app():
-    """Get or create Flask app with proper initialization"""
-    app = create_app()
-    # Ensure SQLAlchemy is initialized with this app
-    db.init_app(app)
-    return app
-
 # Create Flask app for Celery tasks
-flask_app = get_flask_app()
-
-# No need to initialize SQLAlchemy here as it's already initialized in the main app
-# Just ensure we have the app context for database operations
+flask_app = create_app()
 
 def add_message_to_job(job, message):
     """
