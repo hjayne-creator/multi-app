@@ -11,7 +11,11 @@ logger = logging.getLogger(__name__)
 def count_tokens(text, model="gpt-4o-mini"):
     """Count the number of tokens in a text string."""
     try:
-        encoding = tiktoken.encoding_for_model(model)
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except Exception as e:
+            logger.warning(f"Could not get tokenizer for {model}: {str(e)}. Using cl100k_base instead.")
+            encoding = tiktoken.get_encoding("cl100k_base")  # Fallback to cl100k_base (used by gpt-4 and other recent models)
         return len(encoding.encode(text))
     except Exception as e:
         logger.error(f"Error counting tokens: {str(e)}")
@@ -21,7 +25,11 @@ def count_tokens(text, model="gpt-4o-mini"):
 def truncate_text(text, max_tokens, model="gpt-4o-mini"):
     """Truncate text to fit within token limit."""
     try:
-        encoding = tiktoken.encoding_for_model(model)
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except Exception as e:
+            logger.warning(f"Could not get tokenizer for {model}: {str(e)}. Using cl100k_base instead.")
+            encoding = tiktoken.get_encoding("cl100k_base")  # Fallback to cl100k_base (used by gpt-4 and other recent models)
         tokens = encoding.encode(text)
         if len(tokens) > max_tokens:
             truncated_tokens = tokens[:max_tokens]
