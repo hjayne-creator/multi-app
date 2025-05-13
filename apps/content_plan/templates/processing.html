@@ -162,7 +162,14 @@ function checkJobStatus() {
     let themeSelected = false;
     // Function to submit theme selection
     function selectTheme(themeNumber) {
-        if (themeSelected) return;
+        console.log('selectTheme called with number:', themeNumber);
+        console.log('Current themeSelected state:', themeSelected);
+        
+        if (themeSelected) {
+            console.log('Theme already selected, ignoring click');
+            return;
+        }
+        
         themeSelected = true;
         console.log('Selecting theme:', themeNumber);
         
@@ -174,9 +181,6 @@ function checkJobStatus() {
                 card.classList.remove('bg-blue-100', 'border-blue-500');
             }
         });
-        
-        // Get CSRF token if needed (for Option 1 approach)
-        // const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         
         // Disable all theme cards to prevent multiple selections
         document.querySelectorAll('.theme-card').forEach(card => {
@@ -199,21 +203,21 @@ function checkJobStatus() {
         selectionContainer.appendChild(processingMessage);
         
         // Submit selection
+        console.log('Sending theme selection request...');
         fetch('/apps/content-plan/api/theme-selection/{{ job_id }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
-                // Uncomment if using CSRF protection
-                // 'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({ theme_number: themeNumber.toString() })
         })
         .then(response => {
+            console.log('Received response:', response.status);
             if (!response.ok) {
                 return response.text().then(text => {
                     console.error('Error response:', text);
-                    throw new Error(`Server responded with status: ${response.status}`);
+                    throw new Error(`Server responded with status: ${response.status}, message: ${text}`);
                 });
             }
             return response.json();
@@ -259,6 +263,9 @@ function checkJobStatus() {
         .catch(error => {
             console.error('Error selecting theme:', error);
             
+            // Reset theme selection state
+            themeSelected = false;
+            
             // Re-enable theme selection on error
             document.querySelectorAll('.theme-card').forEach(card => {
                 card.classList.remove('opacity-50', 'pointer-events-none');
@@ -272,7 +279,7 @@ function checkJobStatus() {
             // Show error message
             const errorMessage = document.createElement('div');
             errorMessage.className = 'mt-4 p-3 bg-red-50 text-red-700 border border-red-200 rounded';
-            errorMessage.textContent = 'Error selecting theme. Please try again.';
+            errorMessage.textContent = `Error selecting theme: ${error.message}. Please try again.`;
             selectionContainer.appendChild(errorMessage);
             
             // Remove error message after 5 seconds
