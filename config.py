@@ -12,9 +12,9 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
-    # Celery configuration
-    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-    CELERY_RESULT_BACKEND = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+    # Celery configuration - updated to new style naming
+    broker_url = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+    result_backend = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
     
     # API Keys
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')

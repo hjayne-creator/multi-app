@@ -3,8 +3,8 @@ from celery import Celery
 from celery.signals import after_setup_logger
 import logging
 
-# Get Redis URL from environment
-redis_url = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+# Get Redis URL from environment - support both old and new style config for backwards compatibility
+redis_url = os.environ.get('CELERY_BROKER_URL', os.environ.get('broker_url', 'redis://localhost:6379/0'))
 logging.info(f"Using Redis URL: {redis_url}")
 
 # Initialize Celery

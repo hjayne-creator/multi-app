@@ -38,10 +38,10 @@ app = create_app()
 # Create Flask application context
 app.app_context().push()
 
-# Get Redis URL and test connection
-redis_url = os.environ.get('CELERY_BROKER_URL', '')
+# Get Redis URL and test connection - support both old and new style config
+redis_url = os.environ.get('CELERY_BROKER_URL', os.environ.get('broker_url', ''))
 if not redis_url:
-    logger.error("CELERY_BROKER_URL not set in environment variables")
+    logger.error("Neither CELERY_BROKER_URL nor broker_url are set in environment variables")
 else:
     parsed_url = urlparse(redis_url)
     logger.info(f"Redis Configuration:")
