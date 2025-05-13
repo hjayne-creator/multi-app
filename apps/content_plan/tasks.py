@@ -9,7 +9,6 @@ from apps.content_plan.utils.agents import run_agent_with_openai
 from datetime import datetime
 import traceback
 from dotenv import load_dotenv
-from celery import Celery
 from apps.content_plan.prompts import (
     BRAND_BRIEF_PROMPT,
     SEARCH_ANALYSIS_PROMPT,
@@ -29,25 +28,6 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
-
-# Initialize Celery
-celery = Celery('content_plan',
-                broker=os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0'),
-                backend=os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0'))
-
-# Configure Celery
-celery.conf.update(
-    task_serializer='json',
-    accept_content=['json'],
-    result_serializer='json',
-    timezone='UTC',
-    enable_utc=True,
-    task_track_started=True,
-    task_time_limit=3600,
-    task_soft_time_limit=3300,
-    worker_prefetch_multiplier=1,
-    broker_connection_retry_on_startup=True
-)
 
 def add_message_to_job(job, message):
     """
