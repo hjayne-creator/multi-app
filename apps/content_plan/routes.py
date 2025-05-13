@@ -15,7 +15,6 @@ from apps.content_plan.utils.scraper import scrape_website, validate_url
 from apps.content_plan.utils.search import search_serpapi, deduplicate_results
 from apps.content_plan.utils.workflow import WorkflowManager
 from apps.content_plan.models import db, Job, Theme
-from apps.content_plan.celery_config import celery
 from apps.content_plan.prompts import (
     BRAND_BRIEF_PROMPT,
     SEARCH_ANALYSIS_PROMPT,
@@ -29,8 +28,10 @@ from sqlalchemy import text
 # Create CSRF protection instance
 csrf = CSRFProtect()
 
-# Create Blueprint
 def create_blueprint():
+    # Import celery here to avoid circular imports
+    from apps.content_plan.celery_config import celery
+    
     bp = Blueprint('content_plan', __name__,
                    template_folder='templates',
                    static_folder='static',
@@ -514,10 +515,8 @@ def init_app(app):
     db.init_app(app)
     
     # Initialize Celery with Flask app
-    celery.conf.update(app.config)
-    
-    # Register Celery with Flask app
-    app.extensions['celery'] = celery
+    from apps.content_plan.celery_config import init_celery
+    init_celery(app)
     
     # Initialize Flask-Migrate with the correct migrations directory
     migrate = Migrate(app, db, directory='apps/content_plan/migrations')

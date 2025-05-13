@@ -72,10 +72,8 @@ def setup_loggers(logger, *args, **kwargs):
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)  # Changed to DEBUG for more verbose logging
 
-def get_flask_app():
-    """Lazy loading of Flask app to avoid circular imports"""
-    from apps import create_app
-    return create_app()
-
-# Create Flask app instance
-flask_app = get_flask_app()
+def init_celery(app):
+    """Initialize Celery with Flask app"""
+    celery.conf.update(app.config)
+    app.extensions['celery'] = celery
+    return celery
