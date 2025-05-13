@@ -32,22 +32,8 @@ load_dotenv()
 # Create Flask app for Celery tasks
 flask_app = create_app()
 
-# Initialize SQLAlchemy with Flask app
-db.init_app(flask_app)
-
-# Initialize Flask-Migrate with the correct migrations directory
-from flask_migrate import Migrate
-migrate = Migrate(flask_app, db, directory='apps/content_plan/migrations')
-
-# Run migrations on startup
-with flask_app.app_context():
-    try:
-        from flask_migrate import upgrade
-        upgrade()
-        logger.info("Database migrations completed successfully")
-    except Exception as e:
-        logger.error(f"Error running migrations: {str(e)}")
-        raise
+# No need to initialize SQLAlchemy here as it's already initialized in the main app
+# Just ensure we have the app context for database operations
 
 def add_message_to_job(job, message):
     """
