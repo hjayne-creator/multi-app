@@ -18,7 +18,11 @@ def create_app():
     migrate.init_app(app, db)
     
     # Register blueprints
-    from apps.content_plan.routes import content_plan_bp
-    app.register_blueprint(content_plan_bp)
+    register_blueprints(app)
     
     return app
+
+def register_blueprints(app):
+    """Register blueprints with the Flask app"""
+    from apps.content_plan.routes import content_plan_bp
+    app.register_blueprint(content_plan_bp)

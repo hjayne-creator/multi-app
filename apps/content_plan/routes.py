@@ -15,7 +15,6 @@ from apps.content_plan.utils.scraper import scrape_website, validate_url
 from apps.content_plan.utils.search import search_serpapi, deduplicate_results
 from apps.content_plan.utils.workflow import WorkflowManager
 from apps.content_plan.models import db, Job, Theme
-from apps.content_plan.tasks import celery, process_workflow_task, continue_workflow_after_selection_task
 from apps.content_plan.prompts import (
     BRAND_BRIEF_PROMPT,
     SEARCH_ANALYSIS_PROMPT,
@@ -44,6 +43,11 @@ PILLAR_TOPICS_HEADING = "## Pillar Topics & Articles"
 class ContentWorkflowForm(FlaskForm):
     website_url = StringField('Website URL', validators=[DataRequired(), URL()])
     keywords = TextAreaField('Search Keywords (one per line or comma-separated)', validators=[DataRequired()])
+
+def get_celery_tasks():
+    """Lazy import of celery tasks to avoid circular imports"""
+    from apps.content_plan.tasks import process_workflow_task, continue_workflow_after_selection_task
+    return process_workflow_task, continue_workflow_after_selection_task
 
 def merge_final_plan_with_articles(final_plan, article_ideas, split_marker, section_heading):
     """
@@ -152,6 +156,7 @@ def process_job(job_id):
         db.session.commit()
         
         # Start processing in Celery
+        process_workflow_task, _ = get_celery_tasks()
         process_workflow_task.delay(job_id)
     
     return render_template('content_plan_processing.html', job_id=job_id, job=job.to_dict())
@@ -262,6 +267,7 @@ def theme_selection(job_id):
         db.session.commit()
         
         # Continue workflow in Celery
+        _, continue_workflow_after_selection_task = get_celery_tasks()
         continue_workflow_after_selection_task.delay(job_id)
         
         return jsonify({
