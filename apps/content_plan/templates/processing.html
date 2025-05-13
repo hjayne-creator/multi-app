@@ -16,7 +16,7 @@ const displayedMessages = new Set();
 // Polling function to check job status
 function checkJobStatus() {
     console.log('Checking job status...');
-    fetch('/job-status/{{ job_id }}')
+    fetch('/apps/content-plan/job-status/{{ job_id }}')
         .then(response => response.json())
         .then(data => {
             console.log('Received job status:', data);
@@ -199,7 +199,7 @@ function checkJobStatus() {
         selectionContainer.appendChild(processingMessage);
         
         // Submit selection
-        fetch('/api/theme-selection/{{ job_id }}', {
+        fetch('/apps/content-plan/api/theme-selection/{{ job_id }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
