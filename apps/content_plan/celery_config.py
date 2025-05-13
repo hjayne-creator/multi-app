@@ -25,11 +25,16 @@ celery.conf.update(
     
     # Task settings
     task_track_started=True,
-    task_time_limit=3600,
-    task_soft_time_limit=3300,
+    task_time_limit=7200,  # Increased from 3600 (2 hours instead of 1)
+    task_soft_time_limit=6900,  # Increased from 3300
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=100,  # Restart worker after 100 tasks
     worker_max_memory_per_child=200000,  # 200MB memory limit per worker
+    
+    # Error handling
+    task_acks_late=True,  # Only acknowledge after task completes
+    task_reject_on_worker_lost=True,  # Reject tasks if worker disconnects
+    task_acks_on_failure_or_timeout=False,  # Don't acknowledge failed tasks
     
     # Redis connection settings
     broker_connection_retry=True,
@@ -42,20 +47,20 @@ celery.conf.update(
     # Result backend settings
     result_backend_transport_options={
         'retry_policy': {
-            'timeout': 5.0,
-            'max_retries': 3,
+            'timeout': 10.0,  # Increased from 5.0
+            'max_retries': 5,  # Increased from 3
         },
         'global_keyprefix': 'celery_results'
     },
     
     # Redis specific settings
-    redis_socket_timeout=30,
-    redis_socket_connect_timeout=30,
+    redis_socket_timeout=60,  # Increased from 30
+    redis_socket_connect_timeout=60,  # Increased from 30
     redis_retry_on_timeout=True,
     redis_max_connections=10,
     
     # Worker settings
-    worker_concurrency=4,  # Reduced from default 16
+    worker_concurrency=2,  # Reduced from 4 to prevent memory issues on Render
     worker_enable_remote_control=True,
     worker_send_task_events=True,
     task_send_sent_event=True

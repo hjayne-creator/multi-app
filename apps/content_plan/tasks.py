@@ -115,7 +115,16 @@ def process_workflow_task(self, job_id):
             add_message_to_job(job, f"🔍 Retrieving content from {job.website_url}...")
             db.session.commit()
             
-            website_content_result = scrape_website(job.website_url)
+            try:
+                website_content_result = scrape_website(job.website_url)
+            except Exception as e:
+                logger.error(f"Error scraping website: {str(e)}")
+                error_message = f"Failed to scrape website content: {str(e)}"
+                job.status = 'error'
+                job.error = error_message
+                add_message_to_job(job, f"❌ Error: {error_message}")
+                db.session.commit()
+                return {'status': 'error', 'message': error_message}
 
             if not website_content_result.get("success"):
                 job.status = 'error'

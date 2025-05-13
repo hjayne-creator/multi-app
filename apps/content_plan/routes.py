@@ -162,7 +162,7 @@ def create_blueprint():
             process_workflow_task, _ = get_celery_tasks()
             process_workflow_task.delay(job_id)
         
-        return render_template('content_plan_processing.html', job_id=job_id, job=job.to_dict())
+        return render_template('processing.html', job_id=job_id, job=job.to_dict())
 
     @bp.route('/job-status/<job_id>', methods=['GET'])
     def get_job_status(job_id):
