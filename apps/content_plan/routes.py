@@ -15,6 +15,7 @@ from apps.content_plan.utils.scraper import scrape_website, validate_url
 from apps.content_plan.utils.search import search_serpapi, deduplicate_results
 from apps.content_plan.utils.workflow import WorkflowManager
 from apps.content_plan.models import db, Job, Theme
+from apps.content_plan.celery_config import celery
 from apps.content_plan.prompts import (
     BRAND_BRIEF_PROMPT,
     SEARCH_ANALYSIS_PROMPT,
