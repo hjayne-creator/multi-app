@@ -2,7 +2,6 @@ import os
 from celery import Celery
 from celery.signals import after_setup_logger
 import logging
-from apps import create_app
 
 # Get Redis URL from environment
 redis_url = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
@@ -14,9 +13,6 @@ celery = Celery(
     broker=redis_url,
     backend=redis_url
 )
-
-# Create Flask app
-flask_app = create_app()
 
 # Configure Celery with more robust settings
 celery.conf.update(
@@ -75,3 +71,11 @@ def setup_loggers(logger, *args, **kwargs):
     ))
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)  # Changed to DEBUG for more verbose logging
+
+def get_flask_app():
+    """Lazy loading of Flask app to avoid circular imports"""
+    from apps import create_app
+    return create_app()
+
+# Create Flask app instance
+flask_app = get_flask_app()
