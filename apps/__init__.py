@@ -26,5 +26,6 @@ def register_blueprints(app):
     """Register blueprints with the Flask app"""
     # Use lazy loading to avoid circular imports
     with app.app_context():
-        from apps.content_plan.routes import content_plan_bp
+        from apps.content_plan.routes import create_blueprint
+        content_plan_bp = create_blueprint()
         app.register_blueprint(content_plan_bp)
