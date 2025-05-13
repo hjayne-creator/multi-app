@@ -56,12 +56,12 @@ class Config:
     @classmethod
     def init_app(cls, app):
         """Initialize application with this configuration."""
-        # Set up database URL using DATABASE_URL2
-        db_url = os.environ.get('DATABASE_URL2')
+        # Set up database URL using DATABASE_URL
+        db_url = os.environ.get('DATABASE_URL')
         if not db_url:
             if os.environ.get('RENDER'):
-                raise ValueError("DATABASE_URL2 must be set in production environment")
-            logging.warning("DATABASE_URL2 not found in environment variables, using local development database")
+                raise ValueError("DATABASE_URL must be set in production environment")
+            logging.warning("DATABASE_URL not found in environment variables, using local development database")
             db_url = 'postgresql://localhost/contentplan'
         
         # Convert postgres:// to postgresql:// for SQLAlchemy
