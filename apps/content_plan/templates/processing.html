@@ -137,7 +137,7 @@ function checkJobStatus() {
             if (data.status === 'completed') {
                 // Add a delay before redirecting to show the 100% progress
                 setTimeout(() => {
-                    window.location.href = '/results/{{ job_id }}';
+                    window.location.href = '/apps/content-plan/results/{{ job_id }}';
                 }, 3000); // Wait 3 seconds before redirecting
             }
             

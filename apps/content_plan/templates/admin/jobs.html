@@ -31,7 +31,7 @@
     <div class="flex justify-between items-center">
         <h1 class="text-2xl font-bold text-secondary-900">Jobs</h1>
         <div class="flex space-x-4">
-            <form action="{{ url_for('cleanup_jobs') }}" method="POST" class="inline">
+            <form action="{{ url_for('content_plan.cleanup_jobs') }}" method="POST" class="inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" 
                         class="btn-secondary flex items-center"
@@ -42,7 +42,7 @@
                     Clean Up Incomplete Jobs
                 </button>
             </form>
-            <a href="{{ url_for('index') }}" class="btn-primary flex items-center">
+            <a href="{{ url_for('content_plan.index') }}" class="btn-primary flex items-center">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
@@ -144,9 +144,9 @@
                                 </button>
                             {% endif %}
                             {% if job.status == 'completed' %}
-                                <a href="{{ url_for('results', job_id=job.id) }}" class="text-primary-600 hover:text-primary-900">View Results</a>
+                                <a href="{{ url_for('content_plan.results', job_id=job.id) }}" class="text-primary-600 hover:text-primary-900">View Results</a>
                             {% elif job.status == 'processing' or job.status == 'awaiting_selection' %}
-                                <a href="{{ url_for('process_job', job_id=job.id) }}" class="text-primary-600 hover:text-primary-900">View Progress</a>
+                                <a href="{{ url_for('content_plan.process_job', job_id=job.id) }}" class="text-primary-600 hover:text-primary-900">View Progress</a>
                             {% endif %}
                         </div>
                     </td>
