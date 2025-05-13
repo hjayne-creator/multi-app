@@ -5,6 +5,7 @@ import logging
 import redis
 from urllib.parse import urlparse
 import time
+import re
 
 # Configure logging
 logging.basicConfig(
@@ -65,6 +66,15 @@ logger.info("Initializing Celery worker with configuration:")
 logger.info(f"OPENAI_API_KEY set: {bool(app.config.get('OPENAI_API_KEY'))}")
 logger.info(f"SERPAPI_API_KEY set: {bool(app.config.get('SERPAPI_API_KEY'))}")
 logger.info(f"Database URI: {app.config.get('SQLALCHEMY_DATABASE_URI')}")
+# Log database connection string (with password masked for security)
+db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+if db_uri:
+    try:
+        # Try to mask the password in the connection string
+        masked_uri = re.sub(r'(postgresql://[^:]+:)([^@]+)(@.+)', r'\1****\3', db_uri)
+        logger.info(f"Database connection string: {masked_uri}")
+    except:
+        logger.info("Database URI is set but could not be masked for logging")
 
 # Configure Celery to use the same Flask app context
 def celery_init_app(app):

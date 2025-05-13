@@ -8,8 +8,8 @@ class Config:
     # Flask configuration
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev')
     
-    # Database configuration
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
+    # Database configuration - check both DATABASE_URL and DATABASE_URL2
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_URL2')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Celery configuration - updated to new style naming
