@@ -1,7 +1,8 @@
 import json
 import logging
 from flask import current_app
-from apps.content_plan.models import db, Job, Theme
+from apps import db
+from apps.content_plan.models import Job, Theme
 from apps.content_plan.utils.scraper import scrape_website
 from apps.content_plan.utils.search import search_serpapi, deduplicate_results
 from apps.content_plan.utils.workflow import WorkflowManager
@@ -20,8 +21,8 @@ from apps.content_plan.prompts import (
 import os
 import time
 from flask import current_app
-from apps import create_app, db
-from apps.content_plan.celery_config import celery
+from apps import create_app
+from apps.content_plan.celery_config import celery, init_celery
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ load_dotenv()
 
 # Create Flask app for Celery tasks
 flask_app = create_app()
+# Initialize Celery with Flask app
+init_celery(flask_app)
 
 def add_message_to_job(job, message):
     """
