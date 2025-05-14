@@ -498,7 +498,6 @@ def continue_workflow_after_selection_task(self, job_id):
 
             # --- Step 3: Final Plan Generation ---
             add_message_to_job(job, "📊 EDITING PHASE: Adding final touches to the content plan")
-            #add_message_to_job(job, "🤖 Organizing and refining all content components...")
             db.session.commit()
             
             # Idempotency check: skip OpenAI call if final_plan already exists and is valid
@@ -506,6 +505,16 @@ def continue_workflow_after_selection_task(self, job_id):
                 add_message_to_job(job, "ℹ️ Final plan already exists, skipping OpenAI call.")
                 final_plan = job.final_plan
             else:
+                # Validate required fields before making the API call
+                if not job.brand_brief or not job.search_analysis:
+                    error_msg = "Missing required data for final plan generation"
+                    job.status = 'error'
+                    job.error = error_msg
+                    add_message_to_job(job, f"❌ {error_msg}")
+                    current_app.logger.error(f"Error in final plan generation: {error_msg}")
+                    db.session.commit()
+                    return {'status': 'error', 'message': error_msg}
+
                 finalization_message = f"""
                 ## Brand Brief
                 {job.brand_brief}
@@ -524,6 +533,11 @@ def continue_workflow_after_selection_task(self, job_id):
                     final_plan = run_agent_with_openai(CONTENT_EDITOR_PROMPT, finalization_message)
                     if not final_plan or len(final_plan.strip()) < 100:
                         raise Exception("OpenAI API returned an empty or too short response for final plan generation.")
+                    
+                    # Validate the response format
+                    if not any(marker in final_plan for marker in ['##', '#']):
+                        raise Exception("Generated content plan is missing proper markdown formatting")
+                    
                     job.final_plan = final_plan
                     job.progress = 100
                     workflow_manager.advance_phase()  # To COMPLETION
@@ -538,10 +552,11 @@ def continue_workflow_after_selection_task(self, job_id):
                     db.session.commit()
                     return {'status': 'completed'}
                 except Exception as e:
+                    error_msg = f"Error in final plan generation: {str(e)}"
                     job.status = 'error'
-                    job.error = f"Error in final plan generation: {str(e)}"
-                    add_message_to_job(job, f"❌ Error in final plan generation: {str(e)}")
-                    current_app.logger.error(f"Error in final plan generation: {str(e)}")
+                    job.error = error_msg
+                    add_message_to_job(job, f"❌ {error_msg}")
+                    current_app.logger.error(error_msg)
                     current_app.logger.error(traceback.format_exc())
                     db.session.commit()
                     return {'status': 'error', 'message': str(e)}

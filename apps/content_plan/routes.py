@@ -199,17 +199,34 @@ def create_blueprint():
 
     @bp.route('/results/<job_id>', methods=['GET'])
     def results(job_id):
-        job = Job.query.get_or_404(job_id)
-        if job.status != 'completed':
+        try:
+            job = Job.query.get_or_404(job_id)
+            if job.status != 'completed':
+                return redirect(url_for('content_plan.process_job', job_id=job_id))
+
+            # Validate required fields
+            if not job.final_plan:
+                current_app.logger.error(f"Job {job_id} has no final_plan despite being completed")
+                flash("Content plan is not available. Please try again.", "error")
+                return redirect(url_for('content_plan.process_job', job_id=job_id))
+
+            plan = job.final_plan
+            article_ideas = job.article_ideas or ""
+            
+            try:
+                combined_plan = merge_final_plan_with_articles(plan, article_ideas, FINAL_PLAN_SPLIT_MARKER, PILLAR_TOPICS_HEADING)
+            except Exception as e:
+                current_app.logger.error(f"Error merging plans for job {job_id}: {str(e)}")
+                combined_plan = plan  # Fallback to just the final plan
+
+            job_dict = job.to_dict()
+            job_dict['final_plan'] = combined_plan
+            
+            return render_template('content_plan_result.html', job=job_dict)
+        except Exception as e:
+            current_app.logger.error(f"Error in results route for job {job_id}: {str(e)}")
+            flash("An error occurred while retrieving the content plan. Please try again.", "error")
             return redirect(url_for('content_plan.process_job', job_id=job_id))
-
-        plan = job.final_plan or ""
-        article_ideas = job.article_ideas or ""
-        combined_plan = merge_final_plan_with_articles(plan, article_ideas, FINAL_PLAN_SPLIT_MARKER, PILLAR_TOPICS_HEADING)
-
-        job_dict = job.to_dict()
-        job_dict['final_plan'] = combined_plan
-        return render_template('content_plan_result.html', job=job_dict)
 
     @bp.route('/api/theme-selection/<job_id>', methods=['POST'])
     @csrf.exempt
