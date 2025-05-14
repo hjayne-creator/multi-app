@@ -209,7 +209,7 @@ def create_blueprint():
 
         job_dict = job.to_dict()
         job_dict['final_plan'] = combined_plan
-        return render_template('content_plan_results.html', job=job_dict)
+        return render_template('content_plan_result.html', job=job_dict)
 
     @bp.route('/api/theme-selection/<job_id>', methods=['POST'])
     @csrf.exempt
