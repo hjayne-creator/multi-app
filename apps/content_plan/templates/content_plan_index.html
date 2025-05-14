@@ -32,74 +32,22 @@
         
         <div class="card">
             <h2 class="section-title">Generate Your Content Plan</h2>
-            <form id="content-plan-form" action="{{ url_for('content_plan.process_job') }}" method="post" class="space-y-6" autocomplete="off">
+            <form id="content-plan-form" action="{{ url_for('content_plan.index') }}" method="post" class="space-y-6" autocomplete="off">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 
                 <div>
-                    <label for="topic" class="block text-secondary-700 font-medium mb-2">Main Topic *</label>
-                    <input type="text" id="topic" name="topic" placeholder="e.g., content marketing for SaaS businesses" required
+                    <label for="website_url" class="block text-secondary-700 font-medium mb-2">Website URL *</label>
+                    <input type="url" id="website_url" name="website_url" placeholder="e.g., https://example.com" required
                         class="form-input">
-                    <p class="text-sm text-secondary-500 mt-1">Enter a broad topic you want to create content about</p>
+                    <p class="text-sm text-secondary-500 mt-1">Enter your website URL for content analysis</p>
                 </div>
                 
                 <div>
-                    <label for="audience" class="block text-secondary-700 font-medium mb-2">Target Audience *</label>
-                    <input type="text" id="audience" name="audience" placeholder="e.g., SaaS marketing managers" required
-                        class="form-input">
-                    <p class="text-sm text-secondary-500 mt-1">Who will be reading your content?</p>
-                </div>
-                
-                <div>
-                    <label for="goal" class="block text-secondary-700 font-medium mb-2">Content Goal</label>
-                    <select id="goal" name="goal" class="form-input">
-                        <option value="informational">Informational - Educate Your Audience</option>
-                        <option value="comparison">Comparison - Compare Solutions</option>
-                        <option value="purchase">Purchase Intent - Drive Conversions</option>
-                        <option value="awareness">Brand Awareness - Increase Visibility</option>
-                        <option value="retention">Retention - Engage Existing Customers</option>
-                    </select>
-                </div>
-                
-                <div>
-                    <label for="competition" class="block text-secondary-700 font-medium mb-2">Competition Level</label>
-                    <select id="competition" name="competition" class="form-input">
-                        <option value="high">High - Very competitive niche</option>
-                        <option value="medium" selected>Medium - Moderate competition</option>
-                        <option value="low">Low - Less competitive niche</option>
-                    </select>
-                </div>
-                
-                <div>
-                    <label for="content_types" class="block text-secondary-700 font-medium mb-2">Content Types</label>
-                    <div class="space-y-2">
-                        <div class="flex items-center">
-                            <input type="checkbox" id="blog_posts" name="content_types" value="blog_posts" checked
-                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-secondary-300 rounded">
-                            <label for="blog_posts" class="ml-2 text-secondary-700">Blog Posts</label>
-                        </div>
-                        <div class="flex items-center">
-                            <input type="checkbox" id="guides" name="content_types" value="guides" checked
-                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-secondary-300 rounded">
-                            <label for="guides" class="ml-2 text-secondary-700">Guides & Tutorials</label>
-                        </div>
-                        <div class="flex items-center">
-                            <input type="checkbox" id="case_studies" name="content_types" value="case_studies"
-                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-secondary-300 rounded">
-                            <label for="case_studies" class="ml-2 text-secondary-700">Case Studies</label>
-                        </div>
-                        <div class="flex items-center">
-                            <input type="checkbox" id="videos" name="content_types" value="videos"
-                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-secondary-300 rounded">
-                            <label for="videos" class="ml-2 text-secondary-700">Videos</label>
-                        </div>
-                    </div>
-                </div>
-                
-                <div>
-                    <label for="additional_info" class="block text-secondary-700 font-medium mb-2">Additional Information</label>
-                    <textarea id="additional_info" name="additional_info" rows="3" 
-                        placeholder="Any specific requirements or information about your business or approach" 
+                    <label for="keywords" class="block text-secondary-700 font-medium mb-2">Keywords *</label>
+                    <textarea id="keywords" name="keywords" rows="3" 
+                        placeholder="Enter keywords, one per line or comma-separated" required
                         class="form-input"></textarea>
+                    <p class="text-sm text-secondary-500 mt-1">Enter 3-5 keywords related to your content goals</p>
                 </div>
                 
                 <div class="flex items-center justify-between">

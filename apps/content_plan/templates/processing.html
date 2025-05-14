@@ -55,9 +55,9 @@
     </div>
     
     <div class="mt-6 text-center text-secondary-500 text-sm">
-        <p>Your content plan is being created with these details:</p>
-        <p><strong>Topic:</strong> {{ request_data.topic }}</p>
-        <p><strong>Audience:</strong> {{ request_data.audience }}</p>
+        <p>Your content plan is being created with:</p>
+        <p><strong>Website URL:</strong> {{ job.website_url }}</p>
+        <p><strong>Keywords:</strong> {{ job.keywords|join(', ') }}</p>
     </div>
 </div>
 
@@ -75,8 +75,10 @@
                 .then(response => response.json())
                 .then(data => {
                     // Update status message
-                    statusMessage.textContent = data.stage_description;
-                    statusDetails.textContent = data.status_message;
+                    statusMessage.textContent = data.current_phase || 'Processing...';
+                    statusDetails.textContent = data.messages && data.messages.length > 0 
+                        ? data.messages[data.messages.length - 1].text || data.messages[data.messages.length - 1]
+                        : 'Working on your content plan...';
                     
                     // Update progress bar
                     progressBar.style.width = data.progress + '%';
@@ -85,9 +87,9 @@
                     if (data.status === 'completed') {
                         window.location.href = `/apps/content-plan/results/${jobId}`;
                         clearInterval(checkInterval);
-                    } else if (data.status === 'failed') {
+                    } else if (data.status === 'failed' || data.status === 'error') {
                         statusMessage.textContent = 'Error Occurred';
-                        statusDetails.textContent = 'There was a problem generating your content plan. Please try again.';
+                        statusDetails.textContent = data.error || 'There was a problem generating your content plan. Please try again.';
                         statusMessage.classList.add('text-red-600');
                         clearInterval(checkInterval);
                     }

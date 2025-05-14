@@ -21,7 +21,7 @@ def create_app():
     from apps.topic_competitors.routes import topic_competitors_bp
     
     app.register_blueprint(main_bp)
-    app.register_blueprint(content_plan_bp)
+    app.register_blueprint(content_plan_bp, url_prefix='/apps/content-plan')
     app.register_blueprint(content_gaps_bp, url_prefix='/apps/content-gaps')
     app.register_blueprint(topic_competitors_bp, url_prefix='/apps/topic-competitors')
     
