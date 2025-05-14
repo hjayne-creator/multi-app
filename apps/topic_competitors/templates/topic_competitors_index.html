@@ -28,6 +28,7 @@
             </div>
             
             <form action="/apps/topic-competitors/results" method="POST" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div>
                     <label for="topic" class="block text-gray-700 font-medium mb-2">Enter your main topic:</label>
                     <input 
