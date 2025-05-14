@@ -1,355 +1,105 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
 {% block title %}Processing Content Plan{% endblock %}
 
 {% block head %}
-<script>
-    // Start polling when the page loads
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('Starting job status polling...');
-        checkJobStatus();  // Start polling immediately
-    });
-
-// Keep track of messages we've already displayed
-const displayedMessages = new Set();
-
-// Polling function to check job status
-function checkJobStatus() {
-    console.log('Checking job status...');
-    fetch('/apps/content-plan/job-status/{{ job_id }}')
-        .then(response => response.json())
-        .then(data => {
-            console.log('Received job status:', data);
-            
-            // Update progress bar
-            document.getElementById('progress-bar').style.width = data.progress + '%';
-            document.getElementById('progress-text').innerText = data.progress + '%';
-            
-            // Update status message
-            document.getElementById('status-message').innerText = data.status.toUpperCase();
-            
-            // Update current phase
-            if (data.current_phase) {
-                document.getElementById('current-phase').innerText = data.current_phase.replace('_', ' ');
-            }
-            
-            // Update log messages - only add new ones
-            if (data.messages && data.messages.length > 0) {
-                const logContainer = document.getElementById('log-messages');
-                console.log('Received messages:', data.messages);
-                
-                // Add only new messages
-                data.messages.forEach(message => {
-                    // Create a unique identifier for each message based on content only
-                    const messageId = message.text || JSON.stringify(message);
-                    console.log('Processing message:', messageId);
-                    
-                    // If we've already displayed this message, skip it
-                    if (displayedMessages.has(messageId)) {
-                        console.log('Message already displayed, skipping:', messageId);
-                        return;
-                    }
-                    
-                    // Mark as displayed
-                    displayedMessages.add(messageId);
-                    
-                    const messageEl = document.createElement('div');
-                    messageEl.className = 'py-1 border-b flex items-start';
-                    
-                    // Add timestamp
-                    const timestamp = document.createElement('span');
-                    timestamp.className = 'text-gray-500 mr-2 whitespace-nowrap';
-                    
-                    // Use server timestamp if available, otherwise use current time
-                    const messageTime = message.timestamp ? new Date(message.timestamp) : new Date();
-                    const hours = messageTime.getHours().toString().padStart(2, '0');
-                    const minutes = messageTime.getMinutes().toString().padStart(2, '0');
-                    const seconds = messageTime.getSeconds().toString().padStart(2, '0');
-                    timestamp.textContent = `${hours}:${minutes}:${seconds}`;
-                    
-                    // Add message content
-                    const content = document.createElement('span');
-                    content.className = 'flex-1 message-content';
-                    
-                    // Get the actual message text
-                    const messageText = message.text || JSON.stringify(message);
-                    
-                    // Style message based on content
-                    if (messageText.toLowerCase().includes('error') || messageText.includes('❌')) {
-                        content.className += ' text-red-600';
-                    } else if (messageText.toLowerCase().includes('complete') || 
-                               messageText.toLowerCase().includes('success') || 
-                               messageText.includes('✅')) {
-                        content.className += ' text-green-600';
-                    } else if (messageText.toLowerCase().includes('warning') || 
-                               messageText.includes('⚠️')) {
-                        content.className += ' text-yellow-600';
-                    } else if (messageText.includes('🔍') || messageText.includes('📊')) {
-                        content.className += ' text-blue-600';
-                    }
-                    
-                    content.textContent = messageText;
-                    
-                    messageEl.appendChild(timestamp);
-                    messageEl.appendChild(content);
-                    logContainer.appendChild(messageEl);
-                    console.log('Added message to log:', messageText);
-                });
-                
-                // Auto-scroll to bottom
-                logContainer.scrollTop = logContainer.scrollHeight;
-            }
-            
-            // Handle theme selection
-            if (data.status === 'awaiting_selection' && data.themes && data.themes.length > 0) {
-                document.getElementById('theme-selection').classList.remove('hidden');
-                
-                // Only populate themes if they're not already populated
-                const themesContainer = document.getElementById('themes-container');
-                if (themesContainer && themesContainer.children.length === 0) {
-                    // Populate themes
-                    data.themes.forEach((theme, index) => {
-                        const themeCard = document.createElement('div');
-                        themeCard.className = 'theme-card p-4 border rounded my-2 cursor-pointer hover:bg-blue-50';
-                        themeCard.dataset.themeNumber = index + 1;
-                        
-                        themeCard.innerHTML = `
-                            <h3 class="font-bold">${index + 1}. ${theme.title}</h3>
-                            <p class="text-sm text-gray-600">${theme.description}</p>
-                        `;
-                        
-                        themeCard.addEventListener('click', function() {
-                            selectTheme(index + 1);
-                        });
-                        
-                        themesContainer.appendChild(themeCard);
-                    });
-                }
-            } else if (data.status === 'processing' || data.status === 'completed') {
-                // Ensure theme selection is hidden and disabled once processing starts
-                const themeSelection = document.getElementById('theme-selection');
-                if (themeSelection && !themeSelection.classList.contains('hidden')) {
-                    themeSelection.classList.add('hidden');
-                }
-            }
-            
-            // Redirect to results page when completed
-            if (data.status === 'completed') {
-                // Add a delay before redirecting to show the 100% progress
-                setTimeout(() => {
-                    window.location.href = '/apps/content-plan/results/{{ job_id }}';
-                }, 3000); // Wait 3 seconds before redirecting
-            }
-            
-            // Handle errors
-            if (data.status === 'error') {
-                document.getElementById('error-message').innerText = data.error || 'An unknown error occurred';
-                document.getElementById('error-container').classList.remove('hidden');
-            }
-            
-            // Continue polling if job is in progress
-            if (data.status === 'processing' || data.status === 'initialized' || data.status === 'awaiting_selection' || data.status === 'ideating') {
-                console.log('Current messages count:', data.messages ? data.messages.length : 0);
-                setTimeout(checkJobStatus, 2000); // Poll every 2 seconds
-            }
-        })
-        .catch(error => {
-            console.error('Error checking job status:', error);
-            setTimeout(checkJobStatus, 5000); // Retry after 5 seconds on error
-        });
-}
-    
-    let themeSelected = false;
-    // Function to submit theme selection
-    function selectTheme(themeNumber) {
-        console.log('selectTheme called with number:', themeNumber);
-        console.log('Current themeSelected state:', themeSelected);
-        
-        if (themeSelected) {
-            console.log('Theme already selected, ignoring click');
-            return;
-        }
-        
-        themeSelected = true;
-        console.log('Selecting theme:', themeNumber);
-        
-        // Highlight selected theme
-        document.querySelectorAll('.theme-card').forEach(card => {
-            if (parseInt(card.dataset.themeNumber) === themeNumber) {
-                card.classList.add('bg-blue-100', 'border-blue-500');
-            } else {
-                card.classList.remove('bg-blue-100', 'border-blue-500');
-            }
-        });
-        
-        // Disable all theme cards to prevent multiple selections
-        document.querySelectorAll('.theme-card').forEach(card => {
-            card.classList.add('opacity-50', 'pointer-events-none');
-        });
-        
-        // Add processing message
-        const selectionContainer = document.getElementById('theme-selection');
-        const processingMessage = document.createElement('div');
-        processingMessage.className = 'mt-4 p-3 bg-blue-50 text-blue-700 border border-blue-200 rounded';
-        processingMessage.innerHTML = `
-            <div class="flex items-center">
-                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Processing your selection. Please wait while we generate your content plan...</span>
-            </div>
-        `;
-        selectionContainer.appendChild(processingMessage);
-        
-        // Submit selection
-        console.log('Sending theme selection request...');
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        fetch('/apps/content-plan/api/theme-selection/{{ job_id }}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify({ theme_number: themeNumber.toString() })
-        })
-        .then(response => {
-            console.log('Received response:', response.status);
-            if (!response.ok) {
-                return response.text().then(text => {
-                    console.error('Error response:', text);
-                    throw new Error(`Server responded with status: ${response.status}, message: ${text}`);
-                });
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Theme selection successful:', data);
-            
-            // Hide theme selection section 
-            document.getElementById('theme-selection').classList.add('hidden');
-            
-            // Update status
-            document.getElementById('status-message').innerText = 'PROCESSING';
-            
-            // Add a processing notification to the log
-            const logContainer = document.getElementById('log-messages');
-            const logEntry = document.createElement('div');
-            logEntry.className = 'py-1 border-b flex items-start';
-            
-            // Add timestamp
-            const timestamp = document.createElement('span');
-            timestamp.className = 'text-gray-500 mr-2 whitespace-nowrap';
-            const now = new Date();
-            const hours = now.getHours().toString().padStart(2, '0');
-            const minutes = now.getMinutes().toString().padStart(2, '0');
-            const seconds = now.getSeconds().toString().padStart(2, '0');
-            timestamp.textContent = `${hours}:${minutes}:${seconds}`;
-            
-            // Add message content
-            const content = document.createElement('span');
-            content.className = 'flex-1 message-content';
-            content.textContent = `Processing theme: ${data.theme?.title || `Theme #${themeNumber}`}`;
-            
-            logEntry.appendChild(timestamp);
-            logEntry.appendChild(content);
-            logContainer.appendChild(logEntry);
-            
-            // Auto-scroll to bottom
-            logContainer.scrollTop = logContainer.scrollHeight;
-            
-            // Resume polling
-            setTimeout(checkJobStatus, 1000);
-        })
-        .catch(error => {
-            console.error('Error selecting theme:', error);
-            
-            // Reset theme selection state
-            themeSelected = false;
-            
-            // Re-enable theme selection on error
-            document.querySelectorAll('.theme-card').forEach(card => {
-                card.classList.remove('opacity-50', 'pointer-events-none');
-            });
-            
-            // Remove the processing message
-            if (processingMessage && processingMessage.parentNode) {
-                processingMessage.parentNode.removeChild(processingMessage);
-            }
-            
-            // Show error message
-            const errorMessage = document.createElement('div');
-            errorMessage.className = 'mt-4 p-3 bg-red-50 text-red-700 border border-red-200 rounded';
-            errorMessage.textContent = `Error selecting theme: ${error.message}. Please try again.`;
-            selectionContainer.appendChild(errorMessage);
-            
-            // Remove error message after 5 seconds
-            setTimeout(() => {
-                if (errorMessage && errorMessage.parentNode) {
-                    errorMessage.parentNode.removeChild(errorMessage);
-                }
-            }, 5000);
-        });
+<style>
+    .progress-container {
+        width: 100%;
+        background-color: #EFF6FF;
+        border-radius: 0.5rem;
+        overflow: hidden;
     }
-</script>
+    .progress-bar {
+        height: 16px;
+        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+        transition: width 0.3s ease;
+    }
+    .loading-spinner {
+        border: 4px solid rgba(219, 234, 254, 0.3);
+        border-radius: 50%;
+        border-top: 4px solid #3B82F6;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
-    <h1 class="text-3xl font-bold mb-6 text-center">Content Plan in Progress</h1>
+<div class="max-w-3xl mx-auto">
+    <header class="text-center mb-12">
+        <h1 class="text-3xl font-bold text-secondary-800 mb-3">Creating Your Content Plan</h1>
+        <p class="text-lg text-secondary-600">Please wait while we research and generate your content plan</p>
+    </header>
     
-    <div class="card">
-        <div class="flex justify-between mb-4">
-            <div>
-                <h2 class="text-xl font-semibold">Status: <span id="status-message" class="font-mono text-blue-600">{{ job.status.upper() }}</span></h2>
-                <p class="text-sm text-gray-600">Current Phase: <span id="current-phase" class="font-medium">{{ job.current_phase.replace('_', ' ') }}</span></p>
-            </div>
-            <div class="text-right">
-                <span id="progress-text" class="font-bold text-lg">{{ job.progress|default(0) }}%</span>
-            </div>
+    <div class="card p-8">
+        <div class="mb-8 text-center">
+            <div class="loading-spinner mb-4"></div>
+            <h2 id="status-message" class="text-xl font-semibold text-secondary-800 mb-2">Initializing...</h2>
+            <p id="status-details" class="text-secondary-600">Starting the content research process</p>
         </div>
         
-        <!-- Progress Bar -->
-        <div class="w-full bg-gray-200 rounded-full h-4 mb-6">
-            <div id="progress-bar" class="bg-blue-600 h-4 rounded-full transition-all duration-500" style="width: {{ job.progress|default(0) }}%"></div>
+        <div class="progress-container mb-6">
+            <div id="progress-bar" class="progress-bar" style="width: 5%;"></div>
         </div>
         
-        <!-- Error Message (hidden by default) -->
-        <div id="error-container" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6">
-            <p class="font-bold">Error</p>
-            <p id="error-message"></p>
-        </div>
-        
-        <!-- Theme Selection (hidden by default) -->
-        <div id="theme-selection" class="hidden bg-yellow-50 border rounded p-4 mb-6">
-            <h3 class="text-lg font-semibold mb-2">Select a Content Theme</h3>
-            <p class="mb-4 text-gray-700">Based on our analysis, we've identified the following content themes. Please select one to develop into a full content plan:</p>
-            
-            <div id="themes-container" class="max-h-96 overflow-y-auto">
-                <!-- Themes will be populated by JavaScript -->
-            </div>
-        </div>
-        
-        <!-- Progress Log -->
-        <div class="mt-6">
-            <h3 class="text-lg font-semibold mb-2">Progress Log</h3>
-            <div id="log-messages" class="bg-gray-50 rounded border p-3 h-60 overflow-y-auto text-sm font-mono">
-                {% if job.messages %}
-                    {% for message in job.messages %}
-                        <div class="py-1 border-b flex items-start">
-                            <span class="text-gray-500 mr-2 whitespace-nowrap">{{ message.timestamp if message.timestamp else '' }}</span>
-                            <span class="flex-1 message-content">{{ message.text if message.text else message }}</span>
-                        </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="py-1 border-b flex items-start">
-                        <span class="text-gray-500 mr-2 whitespace-nowrap"></span>
-                        <span class="flex-1 message-content">Starting content research workflow...</span>
-                    </div>
-                {% endif %}
-            </div>
+        <div class="text-secondary-500 text-sm">
+            <p>This typically takes 1-2 minutes. Please don't close this window.</p>
         </div>
     </div>
+    
+    <div class="mt-6 text-center text-secondary-500 text-sm">
+        <p>Your content plan is being created with these details:</p>
+        <p><strong>Topic:</strong> {{ request_data.topic }}</p>
+        <p><strong>Audience:</strong> {{ request_data.audience }}</p>
+    </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const jobId = "{{ job_id }}";
+        const statusMessage = document.getElementById('status-message');
+        const statusDetails = document.getElementById('status-details');
+        const progressBar = document.getElementById('progress-bar');
+        
+        let checkInterval;
+        
+        function checkStatus() {
+            fetch(`/content-plan/job-status/${jobId}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Update status message
+                    statusMessage.textContent = data.stage_description;
+                    statusDetails.textContent = data.status_message;
+                    
+                    // Update progress bar
+                    progressBar.style.width = data.progress + '%';
+                    
+                    // If complete, redirect to results
+                    if (data.status === 'completed') {
+                        window.location.href = `/content-plan/results/${jobId}`;
+                        clearInterval(checkInterval);
+                    } else if (data.status === 'failed') {
+                        statusMessage.textContent = 'Error Occurred';
+                        statusDetails.textContent = 'There was a problem generating your content plan. Please try again.';
+                        statusMessage.classList.add('text-red-600');
+                        clearInterval(checkInterval);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking job status:', error);
+                });
+        }
+        
+        // Check status immediately and then every 2 seconds
+        checkStatus();
+        checkInterval = setInterval(checkStatus, 2000);
+    });
+</script>
 {% endblock %}

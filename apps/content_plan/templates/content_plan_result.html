@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
 {% block title %}Content Plan Results{% endblock %}
 
@@ -258,92 +258,43 @@
 
 {% block content %}
 <div class="max-w-5xl mx-auto">
-    <h1 class="text-3xl font-bold mb-6 text-center">Your Content Plan is Ready</h1>
+    <header class="mb-8 text-center">
+        <h1 class="text-3xl font-bold text-secondary-800 mb-2">Content Plan Results</h1>
+        <p class="text-lg text-secondary-600">Generated for: {{ topic }}</p>
+    </header>
     
-    <div class="flex mb-4 justify-end space-x-2">
-        <button onclick="window.print()" class="btn-secondary flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            Print / Save PDF
-        </button>
-        
-        <a href="{{ url_for('main.index') }}" class="btn-primary flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Create New Plan
-        </a>
-    </div>
-    
-    <div class="card mb-6">
-        <div class="flex justify-between mb-6">
+    <div class="card mb-8">
+        <h2 class="section-title">Plan Summary</h2>
+        <div class="space-y-4">
             <div>
-                <h2 class="text-xl font-semibold">Content Plan Summary</h2>
-                <p class="text-sm text-gray-600">Completed on: {{ job.completed_at|default('N/A') }}</p>
+                <h3 class="font-semibold text-secondary-700">Topic:</h3>
+                <p>{{ topic }}</p>
             </div>
-        </div>
-        
-        <!-- Summary Section -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div class="bg-gray-50 p-4 rounded border">
-                <h3 class="font-bold text-lg mb-2">Website Analyzed</h3>
-                <p class="truncate">{{ job.website_url }}</p>
-                <p class="text-sm text-gray-600">{{ job.website_content_length|default(0) }} characters analyzed</p>
+            <div>
+                <h3 class="font-semibold text-secondary-700">Target Audience:</h3>
+                <p>{{ audience }}</p>
             </div>
-            
-            <div class="bg-gray-50 p-4 rounded border">
-                <h3 class="font-bold text-lg mb-2">Keywords Researched</h3>
-                <div class="flex flex-wrap gap-1">
-                    {% for keyword in job.keywords %}
-                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">{{ keyword }}</span>
-                    {% endfor %}
-                </div>
-                <p class="text-sm text-gray-600 mt-1">{{ job.search_results_count|default(0) }} search results analyzed</p>
+            {% if content_goal %}
+            <div>
+                <h3 class="font-semibold text-secondary-700">Content Goal:</h3>
+                <p>{{ content_goal }}</p>
             </div>
-        </div>
-        
-        <!-- Selected Theme -->
-        <div class="bg-blue-50 p-4 rounded border mb-6">
-            <h3 class="font-bold text-lg mb-2">Selected Theme</h3>
-            {% for theme in job.themes %}
-                {% if theme.is_selected %}
-                    <p class="font-medium text-blue-800">{{ theme.title }}</p>
-                    {% if theme.description %}
-                        <p class="text-sm text-gray-700 mt-1">{{ theme.description }}</p>
-                    {% endif %}
-                {% endif %}
-            {% else %}
-                <p class="italic text-gray-600">No theme selected</p>
-            {% endfor %}
-        </div>
-    </div>
-    
-    <!-- Content Plan -->
-    <div class="card">
-        <div id="content-plan" class="markdown-content">
-            {% if job.final_plan %}
-                {{ job.final_plan|default('Content plan not available')|safe }}
-            {% else %}
-                <div class="text-center text-gray-500 py-8">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <p class="text-lg font-medium">Content plan is not available</p>
-                    <p class="text-sm mt-2">Please try refreshing the page or contact support if the issue persists.</p>
-                </div>
             {% endif %}
         </div>
     </div>
     
-    <!-- Download Section -->
-    <div class="mt-6 text-center">
-        <button onclick="window.print()" class="btn-primary flex items-center mx-auto">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            Save as PDF
-        </button>
+    {% if content_plan %}
+        <div class="card">
+            <h2 class="section-title">Content Plan</h2>
+            <div class="space-y-6">
+                {{ content_plan|safe }}
+            </div>
+        </div>
+    {% endif %}
+    
+    <div class="mt-8 flex justify-center">
+        <a href="{{ url_for('content_plan.index') }}" class="btn-secondary mr-4">Create New Plan</a>
+        <a href="/" class="btn-primary">Back to Home</a>
     </div>
 </div>
 {% endblock %}

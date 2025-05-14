@@ -1,265 +1,192 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
-{% block title %}Content Planner - Research & Planning{% endblock %}
+{% block title %}Content Planner{% endblock %}
 
 {% block head %}
-<style>
-    .feature-card {
-        transition: all 0.3s ease;
-    }
-    .feature-card:hover {
-        transform: translateY(-5px);
-    }
-    .feature-icon {
-        background: linear-gradient(135deg, #60A5FA 0%, #3B82F6 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-    
-    /* Animation for the hero section */
-    @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
+    <!-- Additional head elements specific to this page -->
+    <style>
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
         }
-        to {
-            opacity: 1;
-            transform: translateY(0);
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
-    }
-    .animate-fade-in-up {
-        animation: fadeInUp 0.6s ease-out forwards;
-    }
-    .animate-delay-100 {
-        animation-delay: 0.1s;
-    }
-    .animate-delay-200 {
-        animation-delay: 0.2s;
-    }
-    .animate-delay-300 {
-        animation-delay: 0.3s;
-    }
-</style>
+    </style>
 {% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
-<section class="py-12 md:py-16 mb-12">
-    <div class="max-w-5xl mx-auto">
-        <div class="text-center mb-12 animate-fade-in-up opacity-0">
-            <h1 class="text-4xl md:text-5xl font-bold mb-4 text-gradient">AI-Powered Content Research & Planning</h1>
-            <p class="text-xl text-secondary-600 max-w-2xl mx-auto">Transform your content strategy with data-driven insights and comprehensive content plans in minutes, not weeks.</p>
-        </div>
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-bold text-gradient mb-4">Content Planner</h1>
+            <p class="text-xl text-secondary-600">Generate strategic content plans for any topic</p>
+        </header>
         
-        <!-- Debugging info - remove in production -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="mb-8 max-w-2xl mx-auto animate-fade-in-up opacity-0 animate-delay-100">
-                    {% for category, message in messages %}
-                        <div class="p-4 {% if category == 'error' %}bg-red-50 text-red-700 border-l-4 border-red-500{% else %}bg-green-50 text-green-700 border-l-4 border-green-500{% endif %} rounded-md">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
-        
-        <!-- Input Form -->
-        <div class="card max-w-2xl mx-auto shadow-lg animate-fade-in-up opacity-0 animate-delay-100">
-            <h2 class="section-title flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                Start Your Content Planning
-            </h2>
-            
-            <form method="POST" action="{{ url_for('content_plan.index') }}" id="content-form">
-                {{ form.csrf_token }}
+        <div class="card">
+            <h2 class="section-title">Generate Your Content Plan</h2>
+            <form id="content-plan-form" action="{{ url_for('content_plan.process_request') }}" method="post" class="space-y-6" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 
-                <div class="mb-6">
-                    <label class="block text-secondary-700 text-sm font-bold mb-2" for="website_url">
-                        Website URL
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-secondary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                            </svg>
+                <div>
+                    <label for="topic" class="block text-secondary-700 font-medium mb-2">Main Topic *</label>
+                    <input type="text" id="topic" name="topic" placeholder="e.g., content marketing for SaaS businesses" required
+                        class="form-input">
+                    <p class="text-sm text-secondary-500 mt-1">Enter a broad topic you want to create content about</p>
+                </div>
+                
+                <div>
+                    <label for="audience" class="block text-secondary-700 font-medium mb-2">Target Audience *</label>
+                    <input type="text" id="audience" name="audience" placeholder="e.g., SaaS marketing managers" required
+                        class="form-input">
+                    <p class="text-sm text-secondary-500 mt-1">Who will be reading your content?</p>
+                </div>
+                
+                <div>
+                    <label for="goal" class="block text-secondary-700 font-medium mb-2">Content Goal</label>
+                    <select id="goal" name="goal" class="form-input">
+                        <option value="informational">Informational - Educate Your Audience</option>
+                        <option value="comparison">Comparison - Compare Solutions</option>
+                        <option value="purchase">Purchase Intent - Drive Conversions</option>
+                        <option value="awareness">Brand Awareness - Increase Visibility</option>
+                        <option value="retention">Retention - Engage Existing Customers</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label for="competition" class="block text-secondary-700 font-medium mb-2">Competition Level</label>
+                    <select id="competition" name="competition" class="form-input">
+                        <option value="high">High - Very competitive niche</option>
+                        <option value="medium" selected>Medium - Moderate competition</option>
+                        <option value="low">Low - Less competitive niche</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label for="content_types" class="block text-secondary-700 font-medium mb-2">Content Types</label>
+                    <div class="space-y-2">
+                        <div class="flex items-center">
+                            <input type="checkbox" id="blog_posts" name="content_types" value="blog_posts" checked
+                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-secondary-300 rounded">
+                            <label for="blog_posts" class="ml-2 text-secondary-700">Blog Posts</label>
                         </div>
-                        {{ form.website_url(class="form-input pl-10", placeholder="https://example.com", id="website_url") }}
+                        <div class="flex items-center">
+                            <input type="checkbox" id="guides" name="content_types" value="guides" checked
+                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-secondary-300 rounded">
+                            <label for="guides" class="ml-2 text-secondary-700">Guides & Tutorials</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="checkbox" id="case_studies" name="content_types" value="case_studies"
+                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-secondary-300 rounded">
+                            <label for="case_studies" class="ml-2 text-secondary-700">Case Studies</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="checkbox" id="videos" name="content_types" value="videos"
+                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-secondary-300 rounded">
+                            <label for="videos" class="ml-2 text-secondary-700">Videos</label>
+                        </div>
                     </div>
-                    {% if form.website_url.errors %}
-                        <p class="text-red-500 text-xs italic mt-1">
-                            {{ form.website_url.errors[0] }}
-                        </p>
-                    {% endif %}
-                    <p class="text-secondary-500 text-xs mt-1">
-                        Enter the URL of the website you want to create content for. We'll analyze this site to understand your brand.
-                    </p>
                 </div>
                 
-                <div class="mb-6">
-                    <label class="block text-secondary-700 text-sm font-bold mb-2" for="keywords">
-                        Search Keywords (3-5 with similar topic focus)
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 flex items-start pt-2 pl-3 pointer-events-none">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-secondary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                        </div>
-                        {{ form.keywords(class="form-input pl-10 h-24 pt-2", placeholder="Enter search keywords, one per line or comma-separated", id="keywords") }}
-                    </div>
-                    {% if form.keywords.errors %}
-                        <p class="text-red-500 text-xs italic mt-1">
-                            {{ form.keywords.errors[0] }}
-                        </p>
-                    {% endif %}
-                    <p class="text-secondary-500 text-xs mt-1">
-                        Enter keywords related to your content goals. These will be used for search research.
-                    </p>
+                <div>
+                    <label for="additional_info" class="block text-secondary-700 font-medium mb-2">Additional Information</label>
+                    <textarea id="additional_info" name="additional_info" rows="3" 
+                        placeholder="Any specific requirements or information about your business or approach" 
+                        class="form-input"></textarea>
                 </div>
                 
-                <div class="flex items-center justify-center">
-                    <button class="btn-primary flex items-center px-6 py-3 text-lg" type="submit" id="submit-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        Start Content Research
+                <div class="flex items-center justify-between">
+                    <p class="text-sm text-secondary-500">* Required fields</p>
+                    <button type="submit" id="submit-btn" class="btn-primary">
+                        <span>Generate Content Plan</span>
                     </button>
                 </div>
             </form>
         </div>
-    </div>
-</section>
-
-<!-- Features Section -->
-<section class="py-12 bg-white">
-    <div class="max-w-5xl mx-auto">
-        <h2 class="text-3xl font-bold text-center mb-12 text-secondary-800">How It Works</h2>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div class="feature-card p-6 bg-white border border-secondary-200 rounded-lg shadow-sm">
-                <div class="w-12 h-12 rounded-full bg-primary-50 flex items-center justify-center mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 feature-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                    </svg>
-                </div>
-                <h3 class="text-xl font-semibold mb-3 text-secondary-800">1. Research</h3>
-                <p class="text-secondary-600">We analyze your website and search results to understand your brand and content landscape. Our AI identifies key topics, competitors, and audience interests.</p>
+        <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="card">
+                <h3 class="text-xl font-semibold text-secondary-800 mb-4">Why Use Content Planner?</h3>
+                <ul class="space-y-3 text-secondary-600">
+                    <li class="flex items-start">
+                        <svg class="h-5 w-5 text-primary-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span>Strategic content ideas based on search intent</span>
+                    </li>
+                    <li class="flex items-start">
+                        <svg class="h-5 w-5 text-primary-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span>Identify high-value content opportunities</span>
+                    </li>
+                    <li class="flex items-start">
+                        <svg class="h-5 w-5 text-primary-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span>Save time on content research and planning</span>
+                    </li>
+                    <li class="flex items-start">
+                        <svg class="h-5 w-5 text-primary-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span>Get audience-focused content recommendations</span>
+                    </li>
+                </ul>
             </div>
             
-            <div class="feature-card p-6 bg-white border border-secondary-200 rounded-lg shadow-sm">
-                <div class="w-12 h-12 rounded-full bg-primary-50 flex items-center justify-center mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 feature-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                </div>
-                <h3 class="text-xl font-semibold mb-3 text-secondary-800">2. Analysis</h3>
-                <p class="text-secondary-600">Our AI identifies high-value content themes and opportunities for your brand. You'll select the theme that best aligns with your goals and audience needs.</p>
-            </div>
-            
-            <div class="feature-card p-6 bg-white border border-secondary-200 rounded-lg shadow-sm">
-                <div class="w-12 h-12 rounded-full bg-primary-50 flex items-center justify-center mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 feature-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                    </svg>
-                </div>
-                <h3 class="text-xl font-semibold mb-3 text-secondary-800">3. Planning</h3>
-                <p class="text-secondary-600">Based on your selected theme, we develop a complete content plan with topic clusters, pillar content ideas, and supporting articles. All optimized for SEO and audience engagement.</p>
+            <div class="card">
+                <h3 class="text-xl font-semibold text-secondary-800 mb-4">What You'll Get</h3>
+                <ul class="space-y-3 text-secondary-600">
+                    <li class="flex items-start">
+                        <svg class="h-5 w-5 text-primary-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span>Content clusters organized by topic relevance</span>
+                    </li>
+                    <li class="flex items-start">
+                        <svg class="h-5 w-5 text-primary-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span>Strategic content structure with pillar and supporting content</span>
+                    </li>
+                    <li class="flex items-start">
+                        <svg class="h-5 w-5 text-primary-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span>Content brief suggestions for each piece</span>
+                    </li>
+                    <li class="flex items-start">
+                        <svg class="h-5 w-5 text-primary-500 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span>Content creation timeline recommendations</span>
+                    </li>
+                </ul>
             </div>
         </div>
     </div>
-</section>
+{% endblock %}
 
-<!-- Benefits Section -->
-<section class="py-12 bg-gradient-to-b from-gray-50 to-white">
-    <div class="max-w-5xl mx-auto px-4">
-        <h2 class="text-3xl font-bold text-center mb-12 text-secondary-800">Benefits of AI-Powered Content Planning</h2>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="flex items-start">
-                <div class="flex-shrink-0 mt-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                </div>
-                <div class="ml-4">
-                    <h3 class="text-lg font-semibold text-secondary-800">Save Countless Hours</h3>
-                    <p class="text-secondary-600">Generate comprehensive content plans in minutes that would normally take days or weeks to research and compile.</p>
-                </div>
-            </div>
+{% block scripts %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('content-plan-form');
+            const submitBtn = document.getElementById('submit-btn');
             
-            <div class="flex items-start">
-                <div class="flex-shrink-0 mt-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                </div>
-                <div class="ml-4">
-                    <h3 class="text-lg font-semibold text-secondary-800">Data-Driven Decisions</h3>
-                    <p class="text-secondary-600">Create content based on real search data and audience interests, not guesswork or assumptions.</p>
-                </div>
-            </div>
-            
-            <div class="flex items-start">
-                <div class="flex-shrink-0 mt-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                </div>
-                <div class="ml-4">
-                    <h3 class="text-lg font-semibold text-secondary-800">SEO-Optimized Content</h3>
-                    <p class="text-secondary-600">Get recommendations for content that targets valuable keywords and addresses gaps in your current content strategy.</p>
-                </div>
-            </div>
-            
-            <div class="flex items-start">
-                <div class="flex-shrink-0 mt-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                </div>
-                <div class="ml-4">
-                    <h3 class="text-lg font-semibold text-secondary-800">Comprehensive Strategy</h3>
-                    <p class="text-secondary-600">Get a complete content plan with pillar content, supporting articles, and implementation guidelines all in one place.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<script>
-    // Debug form submission
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.querySelector('form');
-        const submitButton = document.getElementById('submit-button');
-        
-        if (form && submitButton) {
-            form.addEventListener('submit', function(e) {
-                console.log('Form submission triggered');
-                
-                // Log form data
-                const formData = new FormData(form);
-                for (let pair of formData.entries()) {
-                    console.log(pair[0] + ': ' + pair[1]);
-                }
-                
-                // Show loading state
-                const originalText = submitButton.innerHTML;
-                submitButton.innerHTML = `
-                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing...
-                `;
-                submitButton.disabled = true;
-                
-                // Allow the form to submit
+            form.addEventListener('submit', function() {
+                // Change button text and add loader
+                const btnText = submitBtn.querySelector('span');
+                btnText.innerHTML = '<div class="loader"></div> Processing...';
+                submitBtn.disabled = true;
             });
-        }
-    });
-</script>
+        });
+    </script>
 {% endblock %}
