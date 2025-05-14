@@ -71,7 +71,7 @@
         let checkInterval;
         
         function checkStatus() {
-            fetch(`/content-plan/job-status/${jobId}`)
+            fetch(`/apps/content-plan/job-status/${jobId}`)
                 .then(response => response.json())
                 .then(data => {
                     // Update status message
@@ -83,7 +83,7 @@
                     
                     // If complete, redirect to results
                     if (data.status === 'completed') {
-                        window.location.href = `/content-plan/results/${jobId}`;
+                        window.location.href = `/apps/content-plan/results/${jobId}`;
                         clearInterval(checkInterval);
                     } else if (data.status === 'failed') {
                         statusMessage.textContent = 'Error Occurred';
