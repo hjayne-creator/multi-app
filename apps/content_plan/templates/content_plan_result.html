@@ -26,7 +26,21 @@
         // Parse markdown content
         const contentPlan = document.getElementById('content-plan');
         if (contentPlan) {
-            const rawContent = contentPlan.textContent;
+            // Clean up the content before rendering
+            let rawContent = contentPlan.textContent;
+            
+            // Remove indentation/leading whitespace from each line
+            rawContent = rawContent.split('\n').map(line => line.trim()).join('\n');
+            
+            // Fix header format if needed (ensure space after #)
+            if (rawContent.trim().match(/^#+[^#\s]/)) {
+                rawContent = rawContent.replace(/^(#+)([^#\s])/, '$1 $2');
+            }
+            
+            // Normalize multiple consecutive newlines
+            rawContent = rawContent.replace(/\n{3,}/g, '\n\n');
+            
+            // Render the cleaned markdown
             contentPlan.innerHTML = marked.parse(rawContent);
             
             // Add section classes for styling

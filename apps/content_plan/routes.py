@@ -55,9 +55,32 @@ def create_blueprint():
     def merge_final_plan_with_articles(final_plan, article_ideas, split_marker, section_heading):
         """
         Merges the final plan with article ideas, ensuring proper placement of the Pillar Topics & Articles section.
+        Also cleans the markdown for proper rendering.
         """
         if not final_plan:
             return f"{section_heading}\n\n{article_ideas}"
+
+        # Clean up the final plan text
+        # Remove leading whitespace/indentation on each line
+        final_plan = "\n".join(line.strip() for line in final_plan.splitlines())
+        
+        # Ensure the first heading is properly formatted
+        if final_plan.lstrip().startswith("# "):
+            # Already correct format
+            pass
+        elif final_plan.lstrip().startswith("#"):
+            # Missing space after #
+            final_plan = final_plan.replace("#", "# ", 1)
+        elif final_plan.lstrip().startswith("            # "):
+            # Indented heading with code block
+            final_plan = final_plan.lstrip()
+        
+        # Normalize multiple consecutive newlines to maximum of two
+        final_plan = re.sub(r'\n{3,}', '\n\n', final_plan)
+        
+        # Similarly clean article_ideas
+        article_ideas = "\n".join(line.strip() for line in article_ideas.splitlines())
+        article_ideas = re.sub(r'\n{3,}', '\n\n', article_ideas)
 
         # Remove any existing duplicate sections
         final_plan = re.sub(rf"\n{section_heading}.*$", "", final_plan, flags=re.DOTALL)
@@ -67,16 +90,16 @@ def create_blueprint():
         # If split_marker is present, insert section there
         if split_marker in final_plan:
             before, after = final_plan.split(split_marker, 1)
-            return f"{before}{section_heading}\n\n{article_ideas}\n{after}"
+            return f"{before.rstrip()}\n\n{section_heading}\n\n{article_ideas}\n\n{after.lstrip()}"
 
         # Try to insert after '## Search Results Analysis'
         sra_match = re.search(r"(^## Search Results Analysis.*?)(?=^## |\Z)", final_plan, re.DOTALL | re.MULTILINE)
         if sra_match:
             insert_pos = sra_match.end(1)
-            return final_plan[:insert_pos] + f"\n\n{section_heading}\n\n{article_ideas}\n" + final_plan[insert_pos:]
+            return final_plan[:insert_pos].rstrip() + f"\n\n{section_heading}\n\n{article_ideas}\n\n" + final_plan[insert_pos:].lstrip()
 
         # Fallback: append at the end
-        return final_plan + f"\n\n{section_heading}\n\n{article_ideas}\n"
+        return final_plan.rstrip() + f"\n\n{section_heading}\n\n{article_ideas}"
 
     @bp.route('/', methods=['GET', 'POST'])
     def index():
