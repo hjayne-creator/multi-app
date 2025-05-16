@@ -48,9 +48,9 @@ def create_blueprint():
         keywords = TextAreaField('Search Keywords (one per line or comma-separated)', validators=[DataRequired()])
 
     def get_celery_tasks():
-        """Lazy import of celery tasks to avoid circular imports"""
-        from apps.content_plan.tasks import process_workflow_task, continue_workflow_after_selection_task
-        return process_workflow_task, continue_workflow_after_selection_task
+        """Gets the Celery task functions, avoiding circular imports"""
+        from apps.content_plan.tasks import process_workflow_task, process_selected_theme
+        return process_workflow_task, process_selected_theme
 
     def merge_final_plan_with_articles(final_plan, article_ideas, split_marker, section_heading):
         """
@@ -230,6 +230,15 @@ def create_blueprint():
                 workflow_manager.set_phase('STRATEGY')
                 job.workflow_data = workflow_manager.save_state()
                 
+                # Ensure processing continues if it stalled before
+                if not job.in_progress:
+                    from apps.content_plan.tasks import process_selected_theme
+                    import threading
+                    thread = threading.Thread(target=process_selected_theme, args=(job_id,))
+                    thread.daemon = True
+                    thread.start()
+                    current_app.logger.info(f"Started processing thread for previously selected theme")
+                
                 db.session.commit()
                 current_app.logger.info(f"Fixed job state, now: {job.status}, phase: {job.current_phase}")
             
@@ -291,7 +300,7 @@ def create_blueprint():
         """API route for theme selection
         
         This endpoint receives a theme selection from the client and processes it,
-        then starts the next stage of workflow in Celery.
+        then starts the next stage of workflow directly without Celery.
         """
         try:
             # Basic validation - check if job_id is valid
@@ -366,26 +375,15 @@ def create_blueprint():
                 # Continue the workflow if not already in progress
                 if job.status == 'awaiting_selection':
                     current_app.logger.info(f"Job {job_id} still in awaiting_selection - starting workflow")
-                    job.status = 'processing'
-                    job.in_progress = False  # Ensure flag is reset
-                    job.messages.append(f"Reprocessing selected theme: {already_selected.title}")
-                    db.session.commit()
                     
-                    # Try to queue the Celery task, but if it fails process directly
-                    try:
-                        _, continue_workflow_after_selection_task = get_celery_tasks()
-                        task = continue_workflow_after_selection_task.delay(job_id)
-                        current_app.logger.info(f"Celery task queued for job {job_id}: {task.id}")
-                    except Exception as celery_error:
-                        current_app.logger.error(f"Failed to queue Celery task: {str(celery_error)}")
-                        # Try to process directly
-                        try: 
-                            from apps.content_plan.tasks import continue_workflow_after_selection_task
-                            current_app.logger.info(f"Processing task directly since Celery failed")
-                            # Execute the task function directly
-                            continue_workflow_after_selection_task(job_id)
-                        except Exception as direct_error:
-                            current_app.logger.error(f"Direct task execution also failed: {str(direct_error)}")
+                    # Use our new simplified implementation
+                    from apps.content_plan.tasks import start_theme_processing
+                    success = start_theme_processing(job_id, already_selected.id)
+                    
+                    if success:
+                        current_app.logger.info(f"Started theme processing for job {job_id}")
+                    else:
+                        current_app.logger.error(f"Failed to start theme processing for job {job_id}")
                 
                 return jsonify({
                     'status': 'success', 
@@ -395,11 +393,6 @@ def create_blueprint():
             
             # Update job with selected theme and advance workflow
             try:
-                workflow_manager = WorkflowManager()
-                if not job.workflow_data:
-                    job.workflow_data = {}
-                workflow_manager.load_state(job.workflow_data)
-                
                 # Find the selected theme
                 theme_number = int(theme_number)
                 themes = Theme.query.filter_by(job_id=job_id).all()
@@ -410,63 +403,23 @@ def create_blueprint():
                 
                 if 1 <= theme_number <= len(themes):
                     selected_theme = themes[theme_number-1]
-                    selected_theme.is_selected = True
                     
-                    # Update job's selected_theme_id field
-                    job.selected_theme_id = selected_theme.id
-                    current_app.logger.info(f"Set job.selected_theme_id to {selected_theme.id}")
+                    # Use our new simplified implementation
+                    from apps.content_plan.tasks import start_theme_processing
+                    success = start_theme_processing(job_id, selected_theme.id)
                     
-                    db.session.commit()
+                    if success:
+                        current_app.logger.info(f"Started theme processing for job {job_id}")
+                    else:
+                        current_app.logger.error(f"Failed to start theme processing for job {job_id}")
+                        return jsonify({'error': 'Failed to start theme processing'}), 500
                 else:
                     current_app.logger.error(f"Theme number {theme_number} out of range (1-{len(themes)})")
                     return jsonify({'error': f'Theme number out of range (1-{len(themes)})'}), 400
                 
-                # Process theme selection
-                workflow_manager.process_theme_selection(theme_number, [theme.to_dict() for theme in themes])
-                
-                # Explicitly set to STRATEGY phase to ensure we move forward
-                if workflow_manager.current_phase != 'STRATEGY':
-                    workflow_manager.set_phase('STRATEGY')
-                
-                # Save updated workflow state
-                job.workflow_data = workflow_manager.save_state()
-                job.current_phase = workflow_manager.current_phase
-                job.messages.append(f"Selected theme: {selected_theme.title}")
-                job.status = 'processing'  # Set to processing
-                job.in_progress = False  # Ensure flag is reset
-                db.session.commit()
-                
-                # Try with Celery but fallback to direct processing if it fails
-                use_direct_processing = False
-                
-                try:
-                    _, continue_workflow_after_selection_task = get_celery_tasks()
-                    task = continue_workflow_after_selection_task.delay(job_id)
-                    current_app.logger.info(f"Celery task queued for job {job_id}: {task.id}")
-                except Exception as celery_error:
-                    current_app.logger.error(f"Failed to queue Celery task: {str(celery_error)}")
-                    use_direct_processing = True
-                
-                # If we couldn't queue the task, try to run it directly
-                if use_direct_processing:
-                    try:
-                        from apps.content_plan.tasks import continue_workflow_after_selection_task
-                        current_app.logger.info(f"Processing task directly since Celery failed")
-                        # Create a separate thread to process the task to avoid blocking the response
-                        import threading
-                        thread = threading.Thread(target=continue_workflow_after_selection_task, args=(job_id,))
-                        thread.daemon = True
-                        thread.start()
-                        current_app.logger.info(f"Started direct processing thread for job {job_id}")
-                    except Exception as direct_error:
-                        current_app.logger.error(f"Direct task execution failed: {str(direct_error)}")
-                        import traceback
-                        current_app.logger.error(traceback.format_exc())
-                        # Even if direct execution fails, return success for the theme selection itself
-                
                 return jsonify({
                     'status': 'success',
-                    'message': 'Theme selected',
+                    'message': 'Theme selected and processing started',
                     'theme': selected_theme.to_dict()
                 }), 200
             except Exception as workflow_error:

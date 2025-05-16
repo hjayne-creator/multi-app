@@ -23,6 +23,7 @@ import time
 from flask import current_app
 from apps import create_app
 from apps.content_plan.celery_config import celery, init_celery
+import threading
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -128,8 +129,11 @@ def process_workflow_task(self, job_id):
                 
                 db.session.commit()
                 
-                # Call the continuation task directly
-                return _continue_workflow_process(job_id)
+                # Start processing the selected theme in a background thread
+                thread = threading.Thread(target=process_selected_theme, args=(job_id,))
+                thread.daemon = True
+                thread.start()
+                return {'status': 'processing'}
             
             # Initialize workflow
             logger.info("Initializing workflow")
@@ -437,167 +441,91 @@ def process_workflow_task(self, job_id):
             db.session.commit()
         return {'status': 'error', 'message': error_msg}
 
-@celery.task(bind=True, autoretry_for=(), retry=False)
-def continue_workflow_after_selection_task(self, job_id):
-    """Celery task to continue workflow after theme selection, using in_progress flag for concurrency control"""
-    logger.info(f"Starting continue_workflow_after_selection_task for job_id: {job_id}")
+# SIMPLIFIED FUNCTION REPLACING CONTINUE_WORKFLOW_AFTER_SELECTION_TASK
+def process_selected_theme(job_id):
+    """Process the selected theme synchronously, without using Celery"""
+    logger.info(f"[Job {job_id}] Starting post-theme selection workflow")
     
-    # Handle both direct calls and celery task calls
-    if self is None or not hasattr(self, 'update_state'):
-        # Direct function call (not through Celery)
-        logger.info(f"Executing task directly for job {job_id} (not through Celery)")
-        _continue_workflow_process(job_id)
-    else:
-        # Normal Celery execution
-        logger.info(f"Executing task through Celery for job {job_id}")
-        return _continue_workflow_process(job_id, self)
-
-def _continue_workflow_process(job_id, celery_task=None):
-    """Internal function to process the workflow continuation, can be called directly or from Celery"""
     try:
-        # Ensure we use the Flask app context
+        # Use Flask app context
         with flask_app.app_context():
-            # Log task start
-            logger.info(f"[Job {job_id}] Starting post-theme selection workflow")
-            
-            # Refresh the session to avoid stale data
-            db.session.expire_all()
-            
-            # First, check if job exists
+            # Get the job
             job = Job.query.get(job_id)
             if not job:
-                logger.error(f"[Job {job_id}] Job not found in database")
-                return {'status': 'error', 'message': f'Job {job_id} not found'}
-            
-            # Log the current job status
-            logger.info(f"[Job {job_id}] Current status: {job.status}, in_progress: {job.in_progress}, phase: {job.current_phase}")
-            
-            # Atomically claim the job for processing
-            try:
-                result = db.session.query(Job).filter(
-                    Job.id == job_id,
-                    Job.in_progress == False
-                ).update({'in_progress': True})
-                db.session.commit()
-                logger.info(f"[Job {job_id}] Attempted to claim job, result: {result}")
-                
-                if result == 0:
-                    logger.warning(f"[Job {job_id}] Skipping: in_progress already True (another worker is processing)")
-                    return {'status': 'skipped', 'message': 'Job is already being processed by another worker.'}
-            except Exception as e:
-                logger.error(f"[Job {job_id}] Error claiming job: {str(e)}")
-                db.session.rollback()
-                return {'status': 'error', 'message': f'Failed to claim job: {str(e)}'}
-            
-            # Reload job after update
-            job = db.session.query(Job).get(job_id)
-            db.session.refresh(job)
-            
-            # Add a message indicating the task has started
-            add_message_to_job(job, "🚀 Continuing workflow with selected theme")
-            db.session.commit()
-            
-            try:
-                # Load workflow manager
-                workflow_manager = WorkflowManager()
-                if not job.workflow_data:
-                    job.workflow_data = {}
-                workflow_manager.load_state(job.workflow_data)
-                
-                # Safety check: if we're still in THEME_SELECTION or earlier phase, force to STRATEGY
-                if workflow_manager.phases.index(workflow_manager.current_phase) <= workflow_manager.phases.index("THEME_SELECTION"):
-                    logger.info(f"[Job {job_id}] Force advancing from {workflow_manager.current_phase} to STRATEGY phase")
-                    workflow_manager.set_phase("STRATEGY")
-                    job.workflow_data = workflow_manager.save_state()
-                    job.current_phase = workflow_manager.current_phase
-                    db.session.commit()
-                
-                # Safety check for selected_theme_id consistency
-                if job.selected_theme_id is not None:
-                    logger.info(f"[Job {job_id}] Has selected_theme_id={job.selected_theme_id}, ensuring theme is marked as selected")
-                    theme = Theme.query.get(job.selected_theme_id)
-                    if theme and not theme.is_selected:
-                        theme.is_selected = True
-                        logger.info(f"[Job {job_id}] Fixed theme selection marker for theme {theme.id}")
-                        db.session.commit()
-                
-                # Get the selected theme
-                selected_theme = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
-                if not selected_theme:
-                    logger.error(f"[Job {job_id}] No theme was selected")
-                    job.status = 'error'
-                    job.error = "No theme was selected"
-                    job.in_progress = False
-                    add_message_to_job(job, "❌ Error: No theme was selected")
-                    db.session.commit()
-                    return {'status': 'error', 'message': "No theme was selected"}
-                
-                # Update selected_theme_id if needed
-                if job.selected_theme_id != selected_theme.id:
-                    logger.info(f"[Job {job_id}] Updating selected_theme_id from {job.selected_theme_id} to {selected_theme.id}")
-                    job.selected_theme_id = selected_theme.id
-                    db.session.commit()
-                
-                logger.info(f"[Job {job_id}] Selected theme: {selected_theme.title}")
-                
-                # Update task state if using Celery
-                if celery_task:
-                    celery_task.update_state(state='PROGRESS',
-                                    meta={'current': 60, 'total': 100,
-                                          'status': 'Processing selected theme'})
-                
-                # --- Step 1: Content Cluster Generation ---
-                add_message_to_job(job, "📝 STRATEGY PHASE: Creating content clusters")
-                add_message_to_job(job, f"🎯 Processing selected theme: {selected_theme.title}")
-                db.session.commit()
-                
-                strategy_message = f"""
-                ## Brand Brief
-                {job.brand_brief}
-                
-                ## Selected Theme
-                **{selected_theme.title}**
-                {selected_theme.description}
-                
-                \nPlease create a content cluster framework based on this theme.
-                """
-                
-                try:
-                    logger.info(f"[Job {job_id}] Starting content cluster generation")
-                    content_cluster = run_agent_with_openai(CONTENT_STRATEGIST_CLUSTER_PROMPT, strategy_message)
-                    if not content_cluster or len(content_cluster.strip()) < 100:
-                        raise Exception("OpenAI API returned an empty or too short response for content cluster generation.")
-                    job.content_cluster = content_cluster
-                    job.progress = 80
-                    add_message_to_job(job, "✅ Content clusters created")
-                    db.session.commit()
-                    logger.info(f"[Job {job_id}] Content clusters created successfully")
-                    
-                    # Update task state if using Celery
-                    if celery_task:
-                        celery_task.update_state(state='PROGRESS',
-                                         meta={'current': 80, 'total': 100,
-                                               'status': 'Content clusters created'})
-                except Exception as e:
-                    logger.error(f"[Job {job_id}] Error in content cluster generation: {str(e)}")
-                    logger.error(traceback.format_exc())
-                    job.status = 'error'
-                    job.error = f"Error in content cluster generation: {str(e)}"
-                    job.in_progress = False
-                    add_message_to_job(job, f"❌ Error in content cluster generation: {str(e)}")
-                    db.session.commit()
-                    return {'status': 'error', 'message': str(e)}
+                logger.error(f"[Job {job_id}] Job not found")
+                return
 
+            # Set job as in progress
+            job.in_progress = True
+            db.session.commit()
+
+            # Add message indicating we're continuing
+            add_message_to_job(job, "🚀 Continuing workflow with selected theme")
+            
+            # Set up workflow manager
+            workflow_manager = WorkflowManager()
+            if job.workflow_data:
+                workflow_manager.load_state(job.workflow_data)
+            
+            # Ensure we're in the STRATEGY phase
+            if workflow_manager.current_phase != 'STRATEGY':
+                workflow_manager.set_phase('STRATEGY')
+                job.workflow_data = workflow_manager.save_state()
+                job.current_phase = workflow_manager.current_phase
+                db.session.commit()
+            
+            # Get the selected theme
+            selected_theme = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
+            if not selected_theme:
+                logger.error(f"[Job {job_id}] No theme selected")
+                job.status = 'error'
+                job.error = "No theme selected"
+                job.in_progress = False
+                add_message_to_job(job, "❌ Error: No theme was selected")
+                db.session.commit()
+                return
+            
+            # Ensure selected_theme_id is set correctly
+            if job.selected_theme_id != selected_theme.id:
+                job.selected_theme_id = selected_theme.id
+                db.session.commit()
+                
+            # --- Step 1: Content Cluster Generation ---
+            add_message_to_job(job, "📝 STRATEGY PHASE: Creating content clusters")
+            add_message_to_job(job, f"🎯 Processing selected theme: {selected_theme.title}")
+            
+            strategy_message = f"""
+            ## Brand Brief
+            {job.brand_brief}
+            
+            ## Selected Theme
+            **{selected_theme.title}**
+            {selected_theme.description}
+            
+            \nPlease create a content cluster framework based on this theme.
+            """
+            
+            try:
+                # Generate content clusters
+                content_cluster = run_agent_with_openai(CONTENT_STRATEGIST_CLUSTER_PROMPT, strategy_message)
+                if not content_cluster or len(content_cluster.strip()) < 100:
+                    raise Exception("Generated content cluster is too short or empty")
+                
+                job.content_cluster = content_cluster
+                job.progress = 80
+                add_message_to_job(job, "✅ Content clusters created")
+                db.session.commit()
+                
                 # --- Step 2: Article Ideation ---
                 add_message_to_job(job, "💡 ARTICLE IDEATION PHASE: Developing content ideas")
-                db.session.commit()
                 
-                # Idempotency check: skip OpenAI call if article_ideas already exists and is valid
+                # Check if we already have article ideas
                 if job.article_ideas and len(job.article_ideas.strip()) >= 100:
-                    logger.info(f"[Job {job_id}] Article ideas already exist, skipping OpenAI call")
-                    add_message_to_job(job, "ℹ️ Article ideas already exist, skipping OpenAI call.")
+                    logger.info(f"[Job {job_id}] Article ideas already exist, skipping generation")
+                    add_message_to_job(job, "ℹ️ Article ideas already exist, skipping generation")
                     article_ideas = job.article_ideas
                 else:
+                    # Generate article ideas
                     ideation_message = f"""
                     ## Brand Brief
                     {job.brand_brief}
@@ -611,58 +539,31 @@ def _continue_workflow_process(job_id, celery_task=None):
                     
                     \nPlease create article ideas based on this content framework.
                     """
-                    try:
-                        logger.info(f"[Job {job_id}] Starting article ideation")
-                        article_ideas = run_agent_with_openai(CONTENT_WRITER_PROMPT, ideation_message)
-                        if not article_ideas or len(article_ideas.strip()) < 100:
-                            raise Exception("OpenAI API returned an empty or too short response for article ideation.")
-                        job.article_ideas = article_ideas
-                        db.session.commit()
-                        add_message_to_job(job, "✅ Article ideas generated")
-                        logger.info(f"[Job {job_id}] Article ideas generated successfully")
-                    except Exception as e:
-                        logger.error(f"[Job {job_id}] Error in article ideation: {str(e)}")
-                        logger.error(traceback.format_exc())
-                        job.status = 'error'
-                        job.error = f"Error in article ideation: {str(e)}"
-                        job.in_progress = False
-                        add_message_to_job(job, f"❌ Error in article ideation: {str(e)}")
-                        db.session.commit()
-                        return {'status': 'error', 'message': str(e)}
+                    
+                    article_ideas = run_agent_with_openai(CONTENT_WRITER_PROMPT, ideation_message)
+                    if not article_ideas or len(article_ideas.strip()) < 100:
+                        raise Exception("Generated article ideas too short or empty")
+                    
+                    job.article_ideas = article_ideas
+                    add_message_to_job(job, "✅ Article ideas generated")
                 
                 job.progress = 90
                 db.session.commit()
-                # Update task state if using Celery
-                if celery_task:
-                    celery_task.update_state(state='PROGRESS',
-                                     meta={'current': 90, 'total': 100,
-                                           'status': 'Article ideas generated'})
-
+                
                 # --- Step 3: Final Plan Generation ---
                 add_message_to_job(job, "📊 EDITING PHASE: Adding final touches to the content plan")
-                db.session.commit()
                 
-                # Idempotency check: skip OpenAI call if final_plan already exists and is valid
+                # Check if we already have a final plan
                 if job.final_plan and len(job.final_plan.strip()) >= 100:
-                    logger.info(f"[Job {job_id}] Final plan already exists, skipping OpenAI call")
-                    add_message_to_job(job, "ℹ️ Final plan already exists, skipping OpenAI call.")
+                    logger.info(f"[Job {job_id}] Final plan already exists, skipping generation")
+                    add_message_to_job(job, "ℹ️ Final plan already exists, skipping generation")
                     final_plan = job.final_plan
                 else:
-                    # Validate required fields before making the API call
-                    if not job.brand_brief or not job.search_analysis:
-                        error_msg = "Missing required data for final plan generation"
-                        logger.error(f"[Job {job_id}] {error_msg}")
-                        job.status = 'error'
-                        job.error = error_msg
-                        job.in_progress = False
-                        add_message_to_job(job, f"❌ {error_msg}")
-                        db.session.commit()
-                        return {'status': 'error', 'message': error_msg}
-
+                    # Generate final plan
                     finalization_message = f"""
                     ## Brand Brief
                     {job.brand_brief}
-
+    
                     ## Search Results Analysis
                     {job.search_analysis}
                     
@@ -673,59 +574,40 @@ def _continue_workflow_process(job_id, celery_task=None):
                     Please create an organized and polished final content plan by reviewing and refining the brand brief and search analysis. 
                     The Pillar Topics & Articles section will be added separately.
                     """
-                    try:
-                        logger.info(f"[Job {job_id}] Starting final plan generation")
-                        final_plan = run_agent_with_openai(CONTENT_EDITOR_PROMPT, finalization_message)
-                        if not final_plan or len(final_plan.strip()) < 100:
-                            raise Exception("OpenAI API returned an empty or too short response for final plan generation.")
-                        
-                        # Validate the response format
-                        if not any(marker in final_plan for marker in ['##', '#']):
-                            raise Exception("Generated content plan is missing proper markdown formatting")
-                        
-                        job.final_plan = final_plan
-                        logger.info(f"[Job {job_id}] Final plan generated successfully")
-                    except Exception as e:
-                        logger.error(f"[Job {job_id}] Error in final plan generation: {str(e)}")
-                        logger.error(traceback.format_exc())
-                        error_msg = f"Error in final plan generation: {str(e)}"
-                        job.status = 'error'
-                        job.error = error_msg
-                        job.in_progress = False
-                        add_message_to_job(job, f"❌ {error_msg}")
-                        db.session.commit()
-                        return {'status': 'error', 'message': str(e)}
+                    
+                    final_plan = run_agent_with_openai(CONTENT_EDITOR_PROMPT, finalization_message)
+                    if not final_plan or len(final_plan.strip()) < 100:
+                        raise Exception("Generated final plan too short or empty")
+                    
+                    job.final_plan = final_plan
                 
-                # Complete the job
-                logger.info(f"[Job {job_id}] Completing job")
+                # Complete job
                 job.progress = 100
                 workflow_manager.advance_phase()  # To COMPLETION
                 job.workflow_data = workflow_manager.save_state()
                 job.current_phase = workflow_manager.current_phase
                 job.status = 'completed'
                 job.completed_at = datetime.now()
-                job.in_progress = False
                 add_message_to_job(job, "✅ Content plan completed successfully!")
                 add_message_to_job(job, "🎉 Your content strategy is ready!")
-                db.session.commit()
-                logger.info(f"[Job {job_id}] Task completed successfully")
-                return {'status': 'completed'}
-
+                
             except Exception as e:
-                logger.error(f"[Job {job_id}] Error in post-theme selection workflow: {str(e)}")
+                logger.error(f"[Job {job_id}] Error in theme processing: {str(e)}")
                 logger.error(traceback.format_exc())
-                error_msg = f"Error in theme selection workflow: {str(e)}"
                 job.status = 'error'
-                job.error = error_msg
+                job.error = f"Error processing theme: {str(e)}"
+                add_message_to_job(job, f"❌ Error: {str(e)}")
+            
+            finally:
+                # Always reset in_progress flag
                 job.in_progress = False
-                add_message_to_job(job, f"❌ {error_msg}")
                 db.session.commit()
-                return {'status': 'error', 'message': error_msg}
+    
     except Exception as e:
-        logger.error(f"[Job {job_id}] Unexpected error in task: {str(e)}")
+        logger.error(f"[Job {job_id}] Unexpected error: {str(e)}")
         logger.error(traceback.format_exc())
+        # Try to update job if possible
         try:
-            # Try to update the job if possible
             with flask_app.app_context():
                 job = Job.query.get(job_id)
                 if job:
@@ -736,4 +618,46 @@ def _continue_workflow_process(job_id, celery_task=None):
                     db.session.commit()
         except:
             pass
-        return {'status': 'error', 'message': f"Unexpected error: {str(e)}"}
+
+# Add a new simple method that can be called directly from routes
+def start_theme_processing(job_id, theme_id):
+    """Start processing the selected theme without Celery"""
+    with flask_app.app_context():
+        try:
+            # Get job and theme
+            job = Job.query.get(job_id)
+            theme = Theme.query.get(theme_id)
+            
+            if not job or not theme:
+                logger.error(f"Job {job_id} or theme {theme_id} not found")
+                return False
+                
+            # Mark theme as selected
+            theme.is_selected = True
+            job.selected_theme_id = theme.id
+            
+            # Set job status
+            job.status = 'processing'
+            job.in_progress = False  # Will be set to True in process_selected_theme
+            
+            # Advance workflow manager
+            workflow_manager = WorkflowManager()
+            if job.workflow_data:
+                workflow_manager.load_state(job.workflow_data)
+            workflow_manager.set_phase('STRATEGY')
+            job.workflow_data = workflow_manager.save_state()
+            job.current_phase = 'STRATEGY'
+            
+            add_message_to_job(job, f"Selected theme: {theme.title}")
+            db.session.commit()
+            
+            # Start processing in background thread
+            thread = threading.Thread(target=process_selected_theme, args=(job_id,))
+            thread.daemon = True
+            thread.start()
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error starting theme processing: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False

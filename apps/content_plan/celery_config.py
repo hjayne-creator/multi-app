@@ -33,83 +33,41 @@ celery.conf.task_acks_late = True  # Tasks are acknowledged after execution
 celery.conf.task_reject_on_worker_lost = True
 celery.conf.task_default_queue = 'content_plan'
 
-# Define custom queues
+# Define custom queue for initial processing only
+# Theme selection will be handled by direct threads, not Celery
 content_plan_exchange = Exchange('content_plan', type='direct')
 celery.conf.task_queues = (
     Queue('content_plan', content_plan_exchange, routing_key='content_plan'),
-    Queue('content_plan.theme_selection', content_plan_exchange, routing_key='content_plan.theme_selection'),
 )
 
 # Define task routing
 celery.conf.task_routes = {
     'apps.content_plan.tasks.process_workflow_task': {'queue': 'content_plan'},
-    'apps.content_plan.tasks.continue_workflow_after_selection_task': {'queue': 'content_plan.theme_selection'},
 }
 
 # Configure task retries
 celery.conf.task_acks_on_failure_or_timeout = False
-celery.conf.broker_transport_options = {
-    'visibility_timeout': 4 * 3600,  # 4 hours
-    'max_retries': 5,
-    'interval_start': 0,
-    'interval_step': 2,
-    'interval_max': 30,
-}
+
+# Called when Celery logger is set up
+@after_setup_logger.connect
+def setup_loggers(logger, *args, **kwargs):
+    logging.info("Setting up Celery logging")
 
 class FlaskTask(Task):
-    """Base task for Flask integration."""
+    """Task with Flask app context"""
     abstract = True
     
     def __call__(self, *args, **kwargs):
-        # Create the Flask context if needed
-        if not self.flask_app:
-            from apps import create_app
-            self.flask_app = create_app()
-            
-        with self.flask_app.app_context():
+        from apps import create_app
+        with create_app().app_context():
             return self.run(*args, **kwargs)
-            
-    def after_return(self, status, retval, task_id, args, kwargs, einfo):
-        """Handler called after the task returns."""
-        if status == 'FAILURE':
-            logger.error(f"Task {self.name}[{task_id}] failed: {retval if isinstance(retval, dict) else 'Unknown error'}")
-            if einfo:
-                logger.error(f"Exception info: {einfo}")
-                
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
-        """Error handler."""
-        logger.error(f"Task {self.name}[{task_id}] failed: {exc}")
-        logger.error(f"Args: {args}, Kwargs: {kwargs}")
-        if einfo:
-            logger.error(f"Exception traceback: {einfo}")
-            
-    flask_app = None
 
-def init_celery(app=None):
-    """Initialize Celery with a Flask app."""
-    logger.info("Initializing Celery with Flask app")
+def init_celery(app):
+    """Initialize Celery with Flask app context"""
+    class ContextTask(Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
     
-    # Update the base task class to work with Flask context
-    celery.Task = FlaskTask
-    
-    # If app provided, store it on the task class
-    if app:
-        celery.Task.flask_app = app
-        
-    # Log Celery configuration
-    logger.info(f"Celery broker URL: {celery.conf.broker_url}")
-    logger.info(f"Celery result backend: {celery.conf.result_backend}")
-    logger.info(f"Celery task routes: {celery.conf.task_routes}")
-    
+    celery.Task = ContextTask
     return celery
-
-@after_setup_logger.connect
-def setup_loggers(logger, *args, **kwargs):
-    """Configure logging for Celery"""
-    import logging
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    ))
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)  # Changed to DEBUG for more verbose logging
