@@ -182,22 +182,34 @@
             document.querySelector('.loading-spinner').style.display = 'block';
             statusMessage.textContent = 'Processing selected theme...';
             
+            // Ensure themeId is a string
+            const themeIdStr = String(themeId);
+            
             // Submit theme selection
             fetch(`/apps/content-plan/api/theme-selection/${jobId}`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ theme_number: themeId })
+                body: JSON.stringify({ theme_number: themeIdStr })
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to submit theme selection');
+                    });
+                }
+                return response.json();
+            })
             .then(data => {
-                if (data.success) {
-                    // Hide theme selection
-                    themeSelection.classList.remove('visible');
-                    statusMessage.textContent = 'Processing selected theme...';
-                } else {
-                    throw new Error(data.error || 'Failed to submit theme selection');
+                console.log('Theme selection successful:', data);
+                // Hide theme selection and update UI
+                themeSelection.classList.remove('visible');
+                statusMessage.textContent = 'Processing selected theme...';
+                
+                // Make sure we continue checking status
+                if (!checkInterval) {
+                    checkInterval = setInterval(checkStatus, 2000);
                 }
             })
             .catch(error => {
