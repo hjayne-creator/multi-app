@@ -285,10 +285,14 @@ def create_blueprint():
                 current_app.logger.error(f"Error merging plans for job {job_id}: {str(e)}")
                 combined_plan = plan  # Fallback to just the final plan
 
-            job_dict = job.to_dict()
-            job_dict['final_plan'] = combined_plan
+            # Extract data from workflow_data
+            workflow_data = job.workflow_data or {}
             
-            return render_template('content_plan_result.html', job=job_dict)
+            return render_template('content_plan_result.html',
+                                topic=workflow_data.get('topic', ''),
+                                audience=workflow_data.get('audience', ''),
+                                content_goal=workflow_data.get('content_goal', ''),
+                                content_plan=combined_plan)
         except Exception as e:
             current_app.logger.error(f"Error in results route for job {job_id}: {str(e)}")
             flash("An error occurred while retrieving the content plan. Please try again.", "error")
