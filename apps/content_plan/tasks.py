@@ -382,6 +382,18 @@ def continue_workflow_after_selection_task(self, job_id):
     """Celery task to continue workflow after theme selection, using in_progress flag for concurrency control"""
     logger.info(f"Starting continue_workflow_after_selection_task for job_id: {job_id}")
     
+    # Handle both direct calls and celery task calls
+    if self is None or not hasattr(self, 'update_state'):
+        # Direct function call (not through Celery)
+        logger.info(f"Executing task directly for job {job_id} (not through Celery)")
+        _continue_workflow_process(job_id)
+    else:
+        # Normal Celery execution
+        logger.info(f"Executing task through Celery for job {job_id}")
+        return _continue_workflow_process(job_id, self)
+
+def _continue_workflow_process(job_id, celery_task=None):
+    """Internal function to process the workflow continuation, can be called directly or from Celery"""
     try:
         # Ensure we use the Flask app context
         with flask_app.app_context():
@@ -445,10 +457,11 @@ def continue_workflow_after_selection_task(self, job_id):
                 
                 logger.info(f"[Job {job_id}] Selected theme: {selected_theme.title}")
                 
-                # Update task state
-                self.update_state(state='PROGRESS',
-                                meta={'current': 60, 'total': 100,
-                                      'status': 'Processing selected theme'})
+                # Update task state if using Celery
+                if celery_task:
+                    celery_task.update_state(state='PROGRESS',
+                                    meta={'current': 60, 'total': 100,
+                                          'status': 'Processing selected theme'})
                 
                 # --- Step 1: Content Cluster Generation ---
                 add_message_to_job(job, "📝 STRATEGY PHASE: Creating content clusters")
@@ -477,9 +490,11 @@ def continue_workflow_after_selection_task(self, job_id):
                     db.session.commit()
                     logger.info(f"[Job {job_id}] Content clusters created successfully")
                     
-                    self.update_state(state='PROGRESS',
-                                     meta={'current': 80, 'total': 100,
-                                           'status': 'Content clusters created'})
+                    # Update task state if using Celery
+                    if celery_task:
+                        celery_task.update_state(state='PROGRESS',
+                                         meta={'current': 80, 'total': 100,
+                                               'status': 'Content clusters created'})
                 except Exception as e:
                     logger.error(f"[Job {job_id}] Error in content cluster generation: {str(e)}")
                     logger.error(traceback.format_exc())
@@ -534,9 +549,11 @@ def continue_workflow_after_selection_task(self, job_id):
                 
                 job.progress = 90
                 db.session.commit()
-                self.update_state(state='PROGRESS',
-                                 meta={'current': 90, 'total': 100,
-                                       'status': 'Article ideas generated'})
+                # Update task state if using Celery
+                if celery_task:
+                    celery_task.update_state(state='PROGRESS',
+                                     meta={'current': 90, 'total': 100,
+                                           'status': 'Article ideas generated'})
 
                 # --- Step 3: Final Plan Generation ---
                 add_message_to_job(job, "📊 EDITING PHASE: Adding final touches to the content plan")

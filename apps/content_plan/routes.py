@@ -337,14 +337,21 @@ def create_blueprint():
                     job.messages.append(f"Reprocessing selected theme: {already_selected.title}")
                     db.session.commit()
                     
-                    # Queue the Celery task
+                    # Try to queue the Celery task, but if it fails process directly
                     try:
                         _, continue_workflow_after_selection_task = get_celery_tasks()
                         task = continue_workflow_after_selection_task.delay(job_id)
                         current_app.logger.info(f"Celery task queued for job {job_id}: {task.id}")
                     except Exception as celery_error:
                         current_app.logger.error(f"Failed to queue Celery task: {str(celery_error)}")
-                        # Continue without raising an error since theme selection itself succeeded
+                        # Try to process directly
+                        try: 
+                            from apps.content_plan.tasks import continue_workflow_after_selection_task
+                            current_app.logger.info(f"Processing task directly since Celery failed")
+                            # Execute the task function directly
+                            continue_workflow_after_selection_task(job_id)
+                        except Exception as direct_error:
+                            current_app.logger.error(f"Direct task execution also failed: {str(direct_error)}")
                 
                 return jsonify({
                     'status': 'success', 
@@ -386,22 +393,33 @@ def create_blueprint():
                 job.in_progress = False  # Ensure flag is reset
                 db.session.commit()
                 
-                # Continue workflow in Celery - with better error handling
+                # Try with Celery but fallback to direct processing if it fails
+                use_direct_processing = False
+                
                 try:
                     _, continue_workflow_after_selection_task = get_celery_tasks()
                     task = continue_workflow_after_selection_task.delay(job_id)
                     current_app.logger.info(f"Celery task queued for job {job_id}: {task.id}")
                 except Exception as celery_error:
-                    # Log the error but don't fail the request
                     current_app.logger.error(f"Failed to queue Celery task: {str(celery_error)}")
-                    import traceback
-                    current_app.logger.error(traceback.format_exc())
-                    # Even if Celery fails, consider the theme selection successful
-                    return jsonify({
-                        'status': 'success',
-                        'message': 'Theme selected but background processing delayed',
-                        'theme': selected_theme.to_dict()
-                    }), 200
+                    use_direct_processing = True
+                
+                # If we couldn't queue the task, try to run it directly
+                if use_direct_processing:
+                    try:
+                        from apps.content_plan.tasks import continue_workflow_after_selection_task
+                        current_app.logger.info(f"Processing task directly since Celery failed")
+                        # Create a separate thread to process the task to avoid blocking the response
+                        import threading
+                        thread = threading.Thread(target=continue_workflow_after_selection_task, args=(job_id,))
+                        thread.daemon = True
+                        thread.start()
+                        current_app.logger.info(f"Started direct processing thread for job {job_id}")
+                    except Exception as direct_error:
+                        current_app.logger.error(f"Direct task execution failed: {str(direct_error)}")
+                        import traceback
+                        current_app.logger.error(traceback.format_exc())
+                        # Even if direct execution fails, return success for the theme selection itself
                 
                 return jsonify({
                     'status': 'success',
