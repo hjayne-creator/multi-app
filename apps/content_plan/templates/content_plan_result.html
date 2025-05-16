@@ -258,34 +258,9 @@
 
 {% block content %}
 <div class="max-w-5xl mx-auto">
-    <header class="mb-8 text-center">
-        <h1 class="text-3xl font-bold text-secondary-800 mb-2">Content Plan Results</h1>
-        <p class="text-lg text-secondary-600">Generated for: {{ topic }}</p>
-    </header>
-    
-    <div class="card mb-8">
-        <h2 class="section-title">Plan Summary</h2>
-        <div class="space-y-4">
-            <div>
-                <h3 class="font-semibold text-secondary-700">Topic:</h3>
-                <p>{{ topic }}</p>
-            </div>
-            <div>
-                <h3 class="font-semibold text-secondary-700">Target Audience:</h3>
-                <p>{{ audience }}</p>
-            </div>
-            {% if content_goal %}
-            <div>
-                <h3 class="font-semibold text-secondary-700">Content Goal:</h3>
-                <p>{{ content_goal }}</p>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    
+   
     {% if content_plan %}
         <div class="card">
-            <h2 class="section-title">Content Plan</h2>
             <div class="space-y-6">
                 <div id="content-plan" class="markdown-content">{{ content_plan }}</div>
             </div>
