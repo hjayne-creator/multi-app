@@ -294,8 +294,15 @@ def create_blueprint():
             flash("An error occurred while retrieving the content plan. Please try again.", "error")
             return redirect(url_for('content_plan.process_job', job_id=job_id))
 
+    # Create a wrapper to ensure proper CSRF exemption
+    def csrf_exempt_route(route_func):
+        """Explicitly ensure CSRF exemption by unwrapping the route function"""
+        route_func.csrf_exempt = True
+        return route_func
+
     @bp.route('/api/theme-selection/<job_id>', methods=['POST'])
-    @csrf.exempt
+    @csrf.exempt  # Make sure this is properly applied
+    @csrf_exempt_route
     def theme_selection(job_id):
         """API route for theme selection
         
@@ -303,6 +310,9 @@ def create_blueprint():
         then starts the next stage of workflow directly without Celery.
         """
         try:
+            # Log request headers for debugging
+            current_app.logger.info(f"Request headers: {request.headers}")
+            
             # Basic validation - check if job_id is valid
             if not job_id:
                 current_app.logger.error("No job_id provided")

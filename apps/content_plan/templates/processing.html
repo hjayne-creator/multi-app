@@ -104,6 +104,7 @@
     
     <!-- Hidden form for fallback submission -->
     <form id="theme-form" class="theme-form" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="theme_number" id="theme-input">
     </form>
     
@@ -281,6 +282,11 @@
                     xhr.open('POST', requestUrl, true);
                     xhr.setRequestHeader('Content-Type', 'application/json');
                     xhr.setRequestHeader('Accept', 'application/json');
+                    // Add X-CSRFToken header for CSRF protection
+                    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                    if (token) {
+                        xhr.setRequestHeader('X-CSRFToken', token);
+                    }
                     xhr.timeout = 10000; // 10 seconds timeout
                     
                     xhr.onload = function() {
@@ -320,11 +326,20 @@
             function submitWithFetch() {
                 const requestUrl = `/apps/content-plan/api/theme-selection/${jobId}`;
                 
+                // Get CSRF token from the meta tag if available
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                
+                // Add CSRF token if available
+                if (token) {
+                    headers['X-CSRFToken'] = token;
+                }
+                
                 return fetch(requestUrl, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: headers,
                     body: JSON.stringify({ theme_number: themeIdStr })
                 })
                 .then(response => {
@@ -349,6 +364,16 @@
             function submitWithForm() {
                 console.log('Submitting via form');
                 
+                // Ensure CSRF token is set in the form
+                const csrf_token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                if (csrf_token) {
+                    const csrfInput = document.querySelector('input[name="csrf_token"]');
+                    if (csrfInput) {
+                        csrfInput.value = csrf_token;
+                        console.log('CSRF token set in form:', csrf_token.substring(0, 10) + '...');
+                    }
+                }
+                
                 // Use an iframe to prevent page reload
                 const iframe = document.createElement('iframe');
                 iframe.name = 'form-target';
@@ -356,9 +381,19 @@
                 document.body.appendChild(iframe);
                 
                 themeForm.target = 'form-target';
+                
+                // Add an event listener for the iframe load
+                iframe.addEventListener('load', function() {
+                    console.log('Form submission completed');
+                    handleSuccess();
+                });
+                
+                console.log('Form action:', themeForm.action);
+                console.log('Form inputs:', Array.from(themeForm.elements).map(el => `${el.name}: ${el.value}`));
+                
                 themeForm.submit();
                 
-                // Assume success after 2 seconds
+                // Assume success after 2 seconds as a fallback
                 setTimeout(() => {
                     handleSuccess();
                 }, 2000);
