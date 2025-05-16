@@ -91,6 +91,14 @@ def process_workflow_task(self, job_id):
             # Get job and create a new session
             job = Job.query.get_or_404(job_id)
             
+            # Check if we need to skip initial phases because a theme was already selected
+            theme_selected = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
+            if theme_selected and job.current_phase != 'STRATEGY':
+                logger.info(f"Theme already selected for job {job_id}, skipping to continue_workflow_after_selection_task")
+                add_message_to_job(job, f"Theme already selected, continuing with {theme_selected.title}...")
+                # Call the continuation task directly
+                return _continue_workflow_process(job_id)
+            
             # Initialize workflow
             logger.info("Initializing workflow")
             job.status = 'processing'

@@ -51,11 +51,15 @@ class WorkflowManager:
             self.phase_timestamps[self.current_phase] = datetime.now().isoformat()
             
             # Record the transition
-            self.transition_history.append({
+            transition = {
                 "from": old_phase,
                 "to": self.current_phase,
                 "timestamp": datetime.now().isoformat()
-            })
+            }
+            self.transition_history.append(transition)
+            
+            # Print debug info
+            print(f"WORKFLOW: Advancing from {old_phase} to {self.current_phase}")
             
             return self.current_phase
         return None
@@ -79,13 +83,24 @@ class WorkflowManager:
     
     def process_theme_selection(self, theme_number, themes=None):
         """Process a theme selection from the user"""
+        # Check if we're already past the THEME_SELECTION phase
+        current_index = self.phases.index(self.current_phase)
+        theme_selection_index = self.phases.index("THEME_SELECTION")
+        
+        # If we're already past theme selection, don't change the phase
+        skip_advance = current_index > theme_selection_index
+        
         if themes and 1 <= theme_number <= len(themes):
             selected = themes[theme_number - 1]
             self.selected_theme = selected
             self.waiting_for_user_input = False
             
-            # Advance to the next phase (STRATEGY)
-            self.advance_phase()  # From THEME_SELECTION to STRATEGY
+            # Print debug info
+            print(f"WORKFLOW: Theme selected: {theme_number}, current phase: {self.current_phase}, skip advance: {skip_advance}")
+            
+            # Advance to the next phase (STRATEGY) only if we're at THEME_SELECTION
+            if not skip_advance and self.current_phase == "THEME_SELECTION":
+                self.advance_phase()  # From THEME_SELECTION to STRATEGY
             
             return selected
         else:
@@ -93,8 +108,12 @@ class WorkflowManager:
             self.selected_theme = {"number": theme_number, "title": f"Theme {theme_number}"}
             self.waiting_for_user_input = False
             
-            # Advance to the next phase
-            self.advance_phase()
+            # Print debug info
+            print(f"WORKFLOW: Theme number stored: {theme_number}, current phase: {self.current_phase}, skip advance: {skip_advance}")
+            
+            # Advance to the next phase only if we're at THEME_SELECTION
+            if not skip_advance and self.current_phase == "THEME_SELECTION":
+                self.advance_phase()
             
             return self.selected_theme
     
