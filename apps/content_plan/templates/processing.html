@@ -28,6 +28,38 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+    .theme-card {
+        border: 2px solid #E5E7EB;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .theme-card:hover {
+        border-color: #3B82F6;
+        transform: translateY(-2px);
+    }
+    .theme-card.selected {
+        border-color: #3B82F6;
+        background-color: #EFF6FF;
+    }
+    .theme-title {
+        font-weight: 600;
+        color: #1F2937;
+        margin-bottom: 0.5rem;
+    }
+    .theme-description {
+        color: #4B5563;
+        font-size: 0.875rem;
+    }
+    .theme-selection-container {
+        display: none;
+        margin-top: 2rem;
+    }
+    .theme-selection-container.visible {
+        display: block;
+    }
 </style>
 {% endblock %}
 
@@ -53,6 +85,18 @@
             <p>This typically takes 1-2 minutes. Please don't close this window.</p>
         </div>
     </div>
+
+    <!-- Theme Selection UI -->
+    <div id="theme-selection" class="theme-selection-container">
+        <div class="card p-8">
+            <h2 class="text-xl font-semibold text-secondary-800 mb-4">Select a Theme</h2>
+            <p class="text-secondary-600 mb-6">Please select one of the following themes to continue with your content plan:</p>
+            <div id="themes-container"></div>
+            <div class="mt-6 text-center">
+                <button id="submit-theme" class="btn btn-primary" disabled>Continue with Selected Theme</button>
+            </div>
+        </div>
+    </div>
     
     <div class="mt-6 text-center text-secondary-500 text-sm">
         <p>Your content plan is being created with:</p>
@@ -67,8 +111,12 @@
         const statusMessage = document.getElementById('status-message');
         const statusDetails = document.getElementById('status-details');
         const progressBar = document.getElementById('progress-bar');
+        const themeSelection = document.getElementById('theme-selection');
+        const themesContainer = document.getElementById('themes-container');
+        const submitThemeBtn = document.getElementById('submit-theme');
         
         let checkInterval;
+        let selectedThemeId = null;
         
         function checkStatus() {
             fetch(`/apps/content-plan/job-status/${jobId}`)
@@ -82,6 +130,22 @@
                     
                     // Update progress bar
                     progressBar.style.width = data.progress + '%';
+                    
+                    // Handle themes if available
+                    if (data.themes && data.themes.length > 0) {
+                        // Show theme selection UI
+                        themeSelection.classList.add('visible');
+                        document.querySelector('.loading-spinner').style.display = 'none';
+                        
+                        // Populate themes
+                        themesContainer.innerHTML = data.themes.map(theme => `
+                            <div class="theme-card ${selectedThemeId === theme.id ? 'selected' : ''}" 
+                                 onclick="selectTheme('${theme.id}')">
+                                <div class="theme-title">${theme.title}</div>
+                                <div class="theme-description">${theme.description}</div>
+                            </div>
+                        `).join('');
+                    }
                     
                     // If complete, redirect to results
                     if (data.status === 'completed') {
@@ -98,6 +162,54 @@
                     console.error('Error checking job status:', error);
                 });
         }
+        
+        // Function to select a theme
+        window.selectTheme = function(themeId) {
+            selectedThemeId = themeId;
+            
+            // Update UI to show selected theme
+            document.querySelectorAll('.theme-card').forEach(card => {
+                card.classList.toggle('selected', card.getAttribute('onclick').includes(themeId));
+            });
+            
+            // Enable submit button
+            submitThemeBtn.disabled = false;
+        };
+        
+        // Handle theme submission
+        submitThemeBtn.addEventListener('click', function() {
+            if (!selectedThemeId) return;
+            
+            // Disable button to prevent double submission
+            submitThemeBtn.disabled = true;
+            submitThemeBtn.textContent = 'Processing...';
+            
+            // Submit theme selection
+            fetch(`/apps/content-plan/api/theme-selection/${jobId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ theme_number: selectedThemeId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Hide theme selection and show loading spinner
+                    themeSelection.classList.remove('visible');
+                    document.querySelector('.loading-spinner').style.display = 'block';
+                    statusMessage.textContent = 'Processing selected theme...';
+                } else {
+                    throw new Error(data.error || 'Failed to submit theme selection');
+                }
+            })
+            .catch(error => {
+                console.error('Error submitting theme:', error);
+                submitThemeBtn.disabled = false;
+                submitThemeBtn.textContent = 'Continue with Selected Theme';
+                alert('Failed to submit theme selection. Please try again.');
+            });
+        });
         
         // Check status immediately and then every 2 seconds
         checkStatus();
