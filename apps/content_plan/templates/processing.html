@@ -119,7 +119,11 @@
         let isSubmitting = false;
         
         function checkStatus() {
-            fetch(`/apps/content-plan/job-status/${jobId}`)
+            // Use the current page's URL structure to build the API URL
+            const origin = window.location.origin;
+            const statusUrl = `${origin}/apps/content-plan/job-status/${jobId}`;
+            
+            fetch(statusUrl)
                 .then(response => response.json())
                 .then(data => {
                     // Update status message
@@ -149,7 +153,7 @@
                     
                     // If complete, redirect to results
                     if (data.status === 'completed') {
-                        window.location.href = `/apps/content-plan/results/${jobId}`;
+                        window.location.href = `${origin}/apps/content-plan/results/${jobId}`;
                         clearInterval(checkInterval);
                     } else if (data.status === 'failed' || data.status === 'error') {
                         statusMessage.textContent = 'Error Occurred';
@@ -182,23 +186,54 @@
             document.querySelector('.loading-spinner').style.display = 'block';
             statusMessage.textContent = 'Processing selected theme...';
             
-            // Ensure themeId is a string
-            const themeIdStr = String(themeId);
+            // Ensure themeId is a string with digits only (this is what the server expects)
+            const themeIdStr = String(parseInt(themeId));
             
-            // Submit theme selection
-            fetch(`/apps/content-plan/api/theme-selection/${jobId}`, {
+            // Get the base URL - for deployed environments
+            const origin = window.location.origin;
+            
+            // Use the current page's URL structure to build the API URL
+            // This ensures we use the same base URL as the current page
+            const requestUrl = `${origin}/apps/content-plan/api/theme-selection/${jobId}`;
+            const requestBody = { theme_number: themeIdStr };
+            
+            console.log(`Submitting theme selection: ${themeIdStr} for job ${jobId}`);
+            console.log(`Request URL: ${requestUrl}`);
+            console.log(`Request body:`, requestBody);
+            
+            // Submit theme selection with the correct URL
+            fetch(requestUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ theme_number: themeIdStr })
+                body: JSON.stringify(requestBody)
             })
             .then(response => {
+                console.log(`Response status: ${response.status} ${response.statusText}`);
+                
                 if (!response.ok) {
-                    return response.json().then(data => {
-                        throw new Error(data.error || 'Failed to submit theme selection');
+                    // Log the full response for debugging
+                    return response.text().then(text => {
+                        console.error('Error response:', text);
+                        try {
+                            // Try to parse as JSON
+                            const jsonData = JSON.parse(text);
+                            throw new Error(jsonData.error || 'Failed to submit theme selection');
+                        } catch (e) {
+                            // Not JSON, return a more helpful error message
+                            if (text.includes('<!doctype html>') || text.includes('<html')) {
+                                throw new Error('Received HTML instead of JSON. This might be due to server error or CORS issue.');
+                            } else {
+                                throw new Error(text.substring(0, 100) || 'Server returned an invalid response');
+                            }
+                        }
+                    }).catch(e => {
+                        // Handle errors in fetching the response text
+                        throw new Error(`Error processing response: ${e.message}`);
                     });
                 }
+                
                 return response.json();
             })
             .then(data => {
@@ -221,7 +256,7 @@
                 });
                 document.querySelector('.loading-spinner').style.display = 'none';
                 themeSelection.classList.add('visible');
-                alert('Failed to submit theme selection. Please try again.');
+                alert(`Failed to submit theme selection: ${error.message}`);
             });
         };
         
