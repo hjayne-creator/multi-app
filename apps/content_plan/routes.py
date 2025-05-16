@@ -197,7 +197,23 @@ def create_blueprint():
             
             current_app.logger.info(f"Job status requested for {job_id}: {job.status}")
             current_app.logger.info(f"Current messages count: {len(job.messages) if job.messages else 0}")
-            current_app.logger.info(f"Messages content: {job.messages}")
+            
+            # Check for inconsistent state: theme selected but job still awaiting selection
+            theme_selected = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
+            if theme_selected and job.status == 'awaiting_selection':
+                current_app.logger.warning(f"Found inconsistent state: theme selected but job in {job.status} status, fixing...")
+                job.status = 'processing'
+                job.current_phase = 'STRATEGY'
+                
+                # Load workflow manager to ensure it's in the right phase
+                workflow_manager = WorkflowManager()
+                if job.workflow_data:
+                    workflow_manager.load_state(job.workflow_data)
+                workflow_manager.set_phase('STRATEGY')
+                job.workflow_data = workflow_manager.save_state()
+                
+                db.session.commit()
+                current_app.logger.info(f"Fixed job state, now: {job.status}, phase: {job.current_phase}")
             
             # Ensure messages is always a list
             messages = job.messages if job.messages else []
@@ -210,11 +226,11 @@ def create_blueprint():
                 'current_phase': job.current_phase,
                 'messages': messages,
                 'error': job.error,
-                'themes': [theme.to_dict() for theme in job.themes] if job.themes else []
+                'themes': [theme.to_dict() for theme in job.themes] if job.themes else [],
+                'in_progress': job.in_progress
             }
             
             current_app.logger.info(f"Returning {len(messages)} messages")
-            current_app.logger.info(f"Response data: {response_data}")
             return jsonify(response_data)
         except Exception as e:
             current_app.logger.error(f"Error getting job status: {str(e)}")
@@ -385,11 +401,15 @@ def create_blueprint():
                 # Process theme selection
                 workflow_manager.process_theme_selection(theme_number, [theme.to_dict() for theme in themes])
                 
+                # Explicitly set to STRATEGY phase to ensure we move forward
+                if workflow_manager.current_phase != 'STRATEGY':
+                    workflow_manager.set_phase('STRATEGY')
+                
                 # Save updated workflow state
                 job.workflow_data = workflow_manager.save_state()
                 job.current_phase = workflow_manager.current_phase
                 job.messages.append(f"Selected theme: {selected_theme.title}")
-                job.status = 'processing'
+                job.status = 'processing'  # Set to processing
                 job.in_progress = False  # Ensure flag is reset
                 db.session.commit()
                 

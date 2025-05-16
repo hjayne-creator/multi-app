@@ -347,10 +347,30 @@
                 themeSelection.classList.remove('visible');
                 statusMessage.textContent = 'Processing selected theme...';
                 
+                // Update progress bar to show we're moving forward
+                progressBar.style.width = '60%';
+                
                 // Make sure we continue checking status
                 if (!checkInterval) {
                     checkInterval = setInterval(checkStatus, 2000);
                 }
+                
+                // Add a fallback redirect after waiting 10 seconds
+                // This helps if the backend got stuck
+                setTimeout(function() {
+                    console.log('Checking if we need to force refresh...');
+                    fetch(`/apps/content-plan/job-status/${jobId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log('Fallback check status:', data.status, 'phase:', data.current_phase);
+                            
+                            // If we're still showing theme selection, force a refresh
+                            if (data.status === 'awaiting_selection' && themeSelection.classList.contains('visible')) {
+                                console.log('Still awaiting selection, forcing refresh...');
+                                window.location.reload();
+                            }
+                        });
+                }, 10000);
             }
         };
         

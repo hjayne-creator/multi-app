@@ -91,11 +91,27 @@ def process_workflow_task(self, job_id):
             # Get job and create a new session
             job = Job.query.get_or_404(job_id)
             
-            # Check if we need to skip initial phases because a theme was already selected
+            # Check if this job already has a selected theme
             theme_selected = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
-            if theme_selected and job.current_phase != 'STRATEGY':
-                logger.info(f"Theme already selected for job {job_id}, skipping to continue_workflow_after_selection_task")
-                add_message_to_job(job, f"Theme already selected, continuing with {theme_selected.title}...")
+            if theme_selected:
+                logger.info(f"Theme already selected for job {job_id}, skipping to continuation workflow")
+                add_message_to_job(job, f"Continuing with selected theme: {theme_selected.title}")
+                job.status = 'processing'
+                job.current_phase = 'STRATEGY'  # Force phase to STRATEGY
+                
+                # Load workflow manager
+                workflow_manager = WorkflowManager()
+                if job.workflow_data:
+                    workflow_manager.load_state(job.workflow_data)
+                
+                # Ensure we're in the right phase
+                if workflow_manager.current_phase != 'STRATEGY':
+                    workflow_manager.set_phase('STRATEGY')
+                    job.workflow_data = workflow_manager.save_state()
+                    job.current_phase = workflow_manager.current_phase
+                
+                db.session.commit()
+                
                 # Call the continuation task directly
                 return _continue_workflow_process(job_id)
             
@@ -327,37 +343,53 @@ def process_workflow_task(self, job_id):
                     pattern = r'(\d+)\.\s+\*\*(.*?)\*\*\s+(.*?)(?=\d+\.\s+\*\*|\Z)'
                     matches = re.finditer(pattern, themes_text, re.DOTALL)
                     
-                    # Clear any existing themes for this job
-                    Theme.query.filter_by(job_id=job_id).delete()
+                    # Clear any existing themes for this job ONLY if no theme is selected
+                    if not Theme.query.filter_by(job_id=job_id, is_selected=True).first():
+                        Theme.query.filter_by(job_id=job_id).delete()
                     
-                    for match in matches:
-                        theme_num = match.group(1).strip()
-                        title = match.group(2).strip()
-                        description = match.group(3).strip()
+                        for match in matches:
+                            theme_num = match.group(1).strip()
+                            title = match.group(2).strip()
+                            description = match.group(3).strip()
+                            
+                            # Create theme in database
+                            theme = Theme(
+                                job_id=job_id,
+                                title=title,
+                                description=description,
+                                is_selected=False
+                            )
+                            db.session.add(theme)
+                    
+                        db.session.commit()
+                        theme_count = len(list(re.finditer(pattern, themes_text)))
+                        add_message_to_job(job, f"✅ Generated {theme_count} content themes")
+                        add_message_to_job(job, "⏳ Waiting for theme selection...")
+                        db.session.commit()
                         
-                        # Create theme in database
-                        theme = Theme(
-                            job_id=job_id,
-                            title=title,
-                            description=description,
-                            is_selected=False
-                        )
-                        db.session.add(theme)
-                    
-                    db.session.commit()
-                    theme_count = len(list(re.finditer(pattern, themes_text)))
-                    add_message_to_job(job, f"✅ Generated {theme_count} content themes")
-                    add_message_to_job(job, "⏳ Waiting for theme selection...")
-                    db.session.commit()
-                    
-                    # Advance workflow to THEME_SELECTION phase
-                    workflow_manager.advance_phase()  # To THEME_SELECTION
-                    job.workflow_data = workflow_manager.save_state()
-                    job.current_phase = workflow_manager.current_phase
-                    job.status = 'awaiting_selection'
-                    db.session.commit()
-                    
-                    return {'status': 'awaiting_selection'}
+                        # Advance workflow to THEME_SELECTION phase
+                        workflow_manager.advance_phase()  # To THEME_SELECTION
+                        job.workflow_data = workflow_manager.save_state()
+                        job.current_phase = workflow_manager.current_phase
+                        job.status = 'awaiting_selection'
+                        db.session.commit()
+                        
+                        return {'status': 'awaiting_selection'}
+                    else:
+                        # If theme is already selected, skip to continuation
+                        theme_selected = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
+                        logger.info(f"Theme already selected during theme generation phase, continuing with {theme_selected.title}")
+                        add_message_to_job(job, f"Continuing with previously selected theme: {theme_selected.title}")
+                        
+                        # Set to STRATEGY phase
+                        workflow_manager.set_phase('STRATEGY')
+                        job.workflow_data = workflow_manager.save_state()
+                        job.current_phase = workflow_manager.current_phase
+                        job.status = 'processing'
+                        db.session.commit()
+                        
+                        # Continue with the selected theme
+                        return _continue_workflow_process(job_id)
                 else:
                     error_msg = "❌ Failed to parse themes from AI response"
                     job.status = 'error'
@@ -418,7 +450,7 @@ def _continue_workflow_process(job_id, celery_task=None):
                 return {'status': 'error', 'message': f'Job {job_id} not found'}
             
             # Log the current job status
-            logger.info(f"[Job {job_id}] Current status: {job.status}, in_progress: {job.in_progress}")
+            logger.info(f"[Job {job_id}] Current status: {job.status}, in_progress: {job.in_progress}, phase: {job.current_phase}")
             
             # Atomically claim the job for processing
             try:
@@ -451,6 +483,14 @@ def _continue_workflow_process(job_id, celery_task=None):
                 if not job.workflow_data:
                     job.workflow_data = {}
                 workflow_manager.load_state(job.workflow_data)
+                
+                # Safety check: if we're still in THEME_SELECTION or earlier phase, force to STRATEGY
+                if workflow_manager.phases.index(workflow_manager.current_phase) <= workflow_manager.phases.index("THEME_SELECTION"):
+                    logger.info(f"[Job {job_id}] Force advancing from {workflow_manager.current_phase} to STRATEGY phase")
+                    workflow_manager.set_phase("STRATEGY")
+                    job.workflow_data = workflow_manager.save_state()
+                    job.current_phase = workflow_manager.current_phase
+                    db.session.commit()
                 
                 # Get the selected theme
                 selected_theme = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
