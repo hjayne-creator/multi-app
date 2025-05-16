@@ -200,10 +200,28 @@ def create_blueprint():
             
             # Check for inconsistent state: theme selected but job still awaiting selection
             theme_selected = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
-            if theme_selected and job.status == 'awaiting_selection':
+            theme_id_selected = job.selected_theme_id is not None
+            
+            # Inconsistent state 1: selected_theme_id is set but no theme is marked as selected
+            if theme_id_selected and not theme_selected:
+                current_app.logger.warning(f"Inconsistent state: job has selected_theme_id={job.selected_theme_id} but no theme is marked selected")
+                theme = Theme.query.get(job.selected_theme_id)
+                if theme:
+                    theme.is_selected = True
+                    db.session.commit()
+                    current_app.logger.info(f"Fixed theme selection state for theme {theme.id}")
+                    theme_selected = theme
+            
+            # Inconsistent state 2: theme is selected but status is still awaiting_selection
+            if (theme_selected or theme_id_selected) and job.status == 'awaiting_selection':
                 current_app.logger.warning(f"Found inconsistent state: theme selected but job in {job.status} status, fixing...")
                 job.status = 'processing'
                 job.current_phase = 'STRATEGY'
+                
+                # If we have a theme selected but no ID, update the ID
+                if theme_selected and not theme_id_selected:
+                    job.selected_theme_id = theme_selected.id
+                    current_app.logger.info(f"Updated job.selected_theme_id to {theme_selected.id}")
                 
                 # Load workflow manager to ensure it's in the right phase
                 workflow_manager = WorkflowManager()
@@ -393,6 +411,11 @@ def create_blueprint():
                 if 1 <= theme_number <= len(themes):
                     selected_theme = themes[theme_number-1]
                     selected_theme.is_selected = True
+                    
+                    # Update job's selected_theme_id field
+                    job.selected_theme_id = selected_theme.id
+                    current_app.logger.info(f"Set job.selected_theme_id to {selected_theme.id}")
+                    
                     db.session.commit()
                 else:
                     current_app.logger.error(f"Theme number {theme_number} out of range (1-{len(themes)})")

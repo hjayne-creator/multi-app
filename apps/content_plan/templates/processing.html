@@ -176,24 +176,37 @@
                     progressBar.style.width = data.progress + '%';
                     
                     // Handle themes if available
-                    if (data.themes && data.themes.length > 0 && !isSubmitting) {
-                        // Show theme selection UI
-                        themeSelection.classList.add('visible');
-                        document.querySelector('.loading-spinner').style.display = 'none';
+                    const themeWasSelected = sessionStorage.getItem(`theme_selected_${jobId}`) === 'true';
+                    
+                    if (data.themes && data.themes.length > 0 && !isSubmitting && !themeWasSelected) {
+                        // Only show theme selection if no theme was previously selected
+                        const hasSelectedTheme = data.themes.some(theme => theme.is_selected);
                         
-                        // Add debug output
-                        console.log(`Job status: ${data.status}, Phase: ${data.current_phase}`);
-                        console.log(`Found ${data.themes.length} themes, messages: ${data.messages?.length || 0}`);
-                        console.log(`In progress: ${data.in_progress}, Selected: ${data.themes.some(t => t.is_selected)}`);
-                        
-                        // Populate themes
-                        themesContainer.innerHTML = data.themes.map((theme, index) => `
-                            <div class="theme-card${theme.is_selected ? ' selected' : ''}" 
-                                 onclick="selectTheme(${index + 1})">
-                                <div class="theme-title">${theme.title}${theme.is_selected ? ' (Selected)' : ''}</div>
-                                <div class="theme-description">${theme.description}</div>
-                            </div>
-                        `).join('');
+                        if (!hasSelectedTheme) {
+                            // Show theme selection UI
+                            themeSelection.classList.add('visible');
+                            document.querySelector('.loading-spinner').style.display = 'none';
+                            
+                            // Add debug output
+                            console.log(`Job status: ${data.status}, Phase: ${data.current_phase}`);
+                            console.log(`Found ${data.themes.length} themes, messages: ${data.messages?.length || 0}`);
+                            console.log(`In progress: ${data.in_progress}, Selected: ${data.themes.some(t => t.is_selected)}`);
+                            
+                            // Populate themes
+                            themesContainer.innerHTML = data.themes.map((theme, index) => `
+                                <div class="theme-card${theme.is_selected ? ' selected' : ''}" 
+                                     onclick="selectTheme(${index + 1})">
+                                    <div class="theme-title">${theme.title}${theme.is_selected ? ' (Selected)' : ''}</div>
+                                    <div class="theme-description">${theme.description}</div>
+                                </div>
+                            `).join('');
+                        } else {
+                            // A theme is already selected, don't show selection UI
+                            console.log('Theme already selected, skipping theme selection UI');
+                            sessionStorage.setItem(`theme_selected_${jobId}`, 'true');
+                            themeSelection.classList.remove('visible');
+                            document.querySelector('.loading-spinner').style.display = 'block';
+                        }
                     }
                     
                     // If complete, redirect to results
@@ -218,6 +231,10 @@
             
             isSubmitting = true;
             
+            // First thing: Set a flag in sessionStorage to remember this theme was selected
+            sessionStorage.setItem(`theme_selected_${jobId}`, 'true');
+            sessionStorage.setItem(`selected_theme_id_${jobId}`, themeId);
+            
             // Update UI to show selected theme and processing state
             document.querySelectorAll('.theme-card').forEach(card => {
                 if (card.getAttribute('onclick').includes(themeId)) {
@@ -230,6 +247,12 @@
             // Show loading spinner and update status
             document.querySelector('.loading-spinner').style.display = 'block';
             statusMessage.textContent = 'Processing selected theme...';
+            
+            // IMPORTANT: Hide theme selection UI immediately
+            themeSelection.classList.remove('visible');
+            
+            // Update progress bar to indicate progress
+            progressBar.style.width = '60%';
             
             // Ensure themeId is a string with digits only
             const themeIdStr = String(parseInt(themeId));

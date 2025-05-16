@@ -91,10 +91,26 @@ def process_workflow_task(self, job_id):
             # Get job and create a new session
             job = Job.query.get_or_404(job_id)
             
+            # First check selected_theme_id for consistency
+            if job.selected_theme_id is not None:
+                logger.info(f"Job {job_id} has selected_theme_id={job.selected_theme_id}, ensuring it's properly set")
+                # Make sure the theme is marked as selected
+                theme = Theme.query.get(job.selected_theme_id)
+                if theme and not theme.is_selected:
+                    theme.is_selected = True
+                    db.session.commit()
+                    logger.info(f"Fixed theme selection state for theme {theme.id}")
+            
             # Check if this job already has a selected theme
             theme_selected = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
             if theme_selected:
                 logger.info(f"Theme already selected for job {job_id}, skipping to continuation workflow")
+                
+                # Update job.selected_theme_id for consistency
+                if job.selected_theme_id != theme_selected.id:
+                    job.selected_theme_id = theme_selected.id
+                    logger.info(f"Updated job.selected_theme_id to {theme_selected.id}")
+                
                 add_message_to_job(job, f"Continuing with selected theme: {theme_selected.title}")
                 job.status = 'processing'
                 job.current_phase = 'STRATEGY'  # Force phase to STRATEGY
@@ -372,6 +388,7 @@ def process_workflow_task(self, job_id):
                         job.workflow_data = workflow_manager.save_state()
                         job.current_phase = workflow_manager.current_phase
                         job.status = 'awaiting_selection'
+                        job.selected_theme_id = None  # Ensure this is reset
                         db.session.commit()
                         
                         return {'status': 'awaiting_selection'}
@@ -380,6 +397,9 @@ def process_workflow_task(self, job_id):
                         theme_selected = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
                         logger.info(f"Theme already selected during theme generation phase, continuing with {theme_selected.title}")
                         add_message_to_job(job, f"Continuing with previously selected theme: {theme_selected.title}")
+                        
+                        # Update selected_theme_id for consistency
+                        job.selected_theme_id = theme_selected.id
                         
                         # Set to STRATEGY phase
                         workflow_manager.set_phase('STRATEGY')
@@ -492,6 +512,15 @@ def _continue_workflow_process(job_id, celery_task=None):
                     job.current_phase = workflow_manager.current_phase
                     db.session.commit()
                 
+                # Safety check for selected_theme_id consistency
+                if job.selected_theme_id is not None:
+                    logger.info(f"[Job {job_id}] Has selected_theme_id={job.selected_theme_id}, ensuring theme is marked as selected")
+                    theme = Theme.query.get(job.selected_theme_id)
+                    if theme and not theme.is_selected:
+                        theme.is_selected = True
+                        logger.info(f"[Job {job_id}] Fixed theme selection marker for theme {theme.id}")
+                        db.session.commit()
+                
                 # Get the selected theme
                 selected_theme = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
                 if not selected_theme:
@@ -502,6 +531,12 @@ def _continue_workflow_process(job_id, celery_task=None):
                     add_message_to_job(job, "❌ Error: No theme was selected")
                     db.session.commit()
                     return {'status': 'error', 'message': "No theme was selected"}
+                
+                # Update selected_theme_id if needed
+                if job.selected_theme_id != selected_theme.id:
+                    logger.info(f"[Job {job_id}] Updating selected_theme_id from {job.selected_theme_id} to {selected_theme.id}")
+                    job.selected_theme_id = selected_theme.id
+                    db.session.commit()
                 
                 logger.info(f"[Job {job_id}] Selected theme: {selected_theme.title}")
                 

@@ -26,6 +26,7 @@ class Job(db.Model):
     completed_at = db.Column(db.DateTime)
     themes = db.relationship('Theme', back_populates='job', cascade='all, delete-orphan')
     in_progress = db.Column(db.Boolean, default=False)
+    selected_theme_id = db.Column(db.Integer)  # Store the ID of the selected theme
 
     def __init__(self, **kwargs):
         super(Job, self).__init__(**kwargs)
