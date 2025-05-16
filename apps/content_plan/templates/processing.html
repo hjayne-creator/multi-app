@@ -44,6 +44,10 @@
         border-color: #3B82F6;
         background-color: #EFF6FF;
     }
+    .theme-card.processing {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
     .theme-title {
         font-weight: 600;
         color: #1F2937;
@@ -90,11 +94,8 @@
     <div id="theme-selection" class="theme-selection-container">
         <div class="card p-8">
             <h2 class="text-xl font-semibold text-secondary-800 mb-4">Select a Theme</h2>
-            <p class="text-secondary-600 mb-6">Please select one of the following themes to continue with your content plan:</p>
+            <p class="text-secondary-600 mb-6">Click on a theme to continue with your content plan:</p>
             <div id="themes-container"></div>
-            <div class="mt-6 text-center">
-                <button id="submit-theme" class="btn btn-primary" disabled>Continue with Selected Theme</button>
-            </div>
         </div>
     </div>
     
@@ -113,10 +114,9 @@
         const progressBar = document.getElementById('progress-bar');
         const themeSelection = document.getElementById('theme-selection');
         const themesContainer = document.getElementById('themes-container');
-        const submitThemeBtn = document.getElementById('submit-theme');
         
         let checkInterval;
-        let selectedThemeId = null;
+        let isSubmitting = false;
         
         function checkStatus() {
             fetch(`/apps/content-plan/job-status/${jobId}`)
@@ -132,14 +132,14 @@
                     progressBar.style.width = data.progress + '%';
                     
                     // Handle themes if available
-                    if (data.themes && data.themes.length > 0) {
+                    if (data.themes && data.themes.length > 0 && !isSubmitting) {
                         // Show theme selection UI
                         themeSelection.classList.add('visible');
                         document.querySelector('.loading-spinner').style.display = 'none';
                         
                         // Populate themes
                         themesContainer.innerHTML = data.themes.map(theme => `
-                            <div class="theme-card ${selectedThemeId === theme.id ? 'selected' : ''}" 
+                            <div class="theme-card" 
                                  onclick="selectTheme('${theme.id}')">
                                 <div class="theme-title">${theme.title}</div>
                                 <div class="theme-description">${theme.description}</div>
@@ -163,26 +163,24 @@
                 });
         }
         
-        // Function to select a theme
+        // Function to select and submit a theme
         window.selectTheme = function(themeId) {
-            selectedThemeId = themeId;
+            if (isSubmitting) return;
             
-            // Update UI to show selected theme
+            isSubmitting = true;
+            
+            // Update UI to show selected theme and processing state
             document.querySelectorAll('.theme-card').forEach(card => {
-                card.classList.toggle('selected', card.getAttribute('onclick').includes(themeId));
+                if (card.getAttribute('onclick').includes(themeId)) {
+                    card.classList.add('selected', 'processing');
+                } else {
+                    card.classList.add('processing');
+                }
             });
             
-            // Enable submit button
-            submitThemeBtn.disabled = false;
-        };
-        
-        // Handle theme submission
-        submitThemeBtn.addEventListener('click', function() {
-            if (!selectedThemeId) return;
-            
-            // Disable button to prevent double submission
-            submitThemeBtn.disabled = true;
-            submitThemeBtn.textContent = 'Processing...';
+            // Show loading spinner and update status
+            document.querySelector('.loading-spinner').style.display = 'block';
+            statusMessage.textContent = 'Processing selected theme...';
             
             // Submit theme selection
             fetch(`/apps/content-plan/api/theme-selection/${jobId}`, {
@@ -190,14 +188,13 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ theme_number: selectedThemeId })
+                body: JSON.stringify({ theme_number: themeId })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Hide theme selection and show loading spinner
+                    // Hide theme selection
                     themeSelection.classList.remove('visible');
-                    document.querySelector('.loading-spinner').style.display = 'block';
                     statusMessage.textContent = 'Processing selected theme...';
                 } else {
                     throw new Error(data.error || 'Failed to submit theme selection');
@@ -205,11 +202,16 @@
             })
             .catch(error => {
                 console.error('Error submitting theme:', error);
-                submitThemeBtn.disabled = false;
-                submitThemeBtn.textContent = 'Continue with Selected Theme';
+                isSubmitting = false;
+                // Reset UI state
+                document.querySelectorAll('.theme-card').forEach(card => {
+                    card.classList.remove('selected', 'processing');
+                });
+                document.querySelector('.loading-spinner').style.display = 'none';
+                themeSelection.classList.add('visible');
                 alert('Failed to submit theme selection. Please try again.');
             });
-        });
+        };
         
         // Check status immediately and then every 2 seconds
         checkStatus();
