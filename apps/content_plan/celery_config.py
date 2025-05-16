@@ -1,70 +1,107 @@
 import os
-from celery import Celery
+from celery import Celery, Task
 from celery.signals import after_setup_logger
 import logging
+import re
+from dotenv import load_dotenv
+from kombu import Exchange, Queue
 
-# Get Redis URL from environment - support both old and new style config for backwards compatibility
-redis_url = os.environ.get('CELERY_BROKER_URL', os.environ.get('broker_url', 'redis://localhost:6379/0'))
-logging.info(f"Using Redis URL: {redis_url}")
+# Load environment variables
+load_dotenv()
 
-# Initialize Celery
-celery = Celery(
-    'content_plan',
-    broker=redis_url,
-    backend=redis_url
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create Celery app with Redis backend
+broker_url = os.environ.get('CELERY_BROKER_URL', os.environ.get('broker_url', 'redis://localhost:6379/0'))
+result_backend = os.environ.get('CELERY_RESULT_BACKEND', os.environ.get('result_backend', 'redis://localhost:6379/0'))
+
+celery = Celery('content_plan',
+                broker=broker_url,
+                backend=result_backend,
+                include=['apps.content_plan.tasks'])
+
+# Task settings
+celery.conf.task_serializer = 'json'
+celery.conf.result_serializer = 'json'
+celery.conf.accept_content = ['json']
+celery.conf.task_time_limit = 3600  # 1 hour
+celery.conf.task_soft_time_limit = 3300  # 55 minutes
+celery.conf.worker_prefetch_multiplier = 1  # One task per worker at a time
+celery.conf.task_acks_late = True  # Tasks are acknowledged after execution
+celery.conf.task_reject_on_worker_lost = True
+celery.conf.task_default_queue = 'content_plan'
+
+# Define custom queues
+content_plan_exchange = Exchange('content_plan', type='direct')
+celery.conf.task_queues = (
+    Queue('content_plan', content_plan_exchange, routing_key='content_plan'),
+    Queue('content_plan.theme_selection', content_plan_exchange, routing_key='content_plan.theme_selection'),
 )
 
-# Configure Celery with more robust settings
-celery.conf.update(
-    # Basic settings
-    task_serializer='json',
-    accept_content=['json'],
-    result_serializer='json',
-    timezone='UTC',
-    enable_utc=True,
+# Define task routing
+celery.conf.task_routes = {
+    'apps.content_plan.tasks.process_workflow_task': {'queue': 'content_plan'},
+    'apps.content_plan.tasks.continue_workflow_after_selection_task': {'queue': 'content_plan.theme_selection'},
+}
+
+# Configure task retries
+celery.conf.task_acks_on_failure_or_timeout = False
+celery.conf.broker_transport_options = {
+    'visibility_timeout': 4 * 3600,  # 4 hours
+    'max_retries': 5,
+    'interval_start': 0,
+    'interval_step': 2,
+    'interval_max': 30,
+}
+
+class FlaskTask(Task):
+    """Base task for Flask integration."""
+    abstract = True
     
-    # Task settings
-    task_track_started=True,
-    task_time_limit=7200,  # Increased from 3600 (2 hours instead of 1)
-    task_soft_time_limit=6900,  # Increased from 3300
-    worker_prefetch_multiplier=1,
-    worker_max_tasks_per_child=100,  # Restart worker after 100 tasks
-    worker_max_memory_per_child=200000,  # 200MB memory limit per worker
+    def __call__(self, *args, **kwargs):
+        # Create the Flask context if needed
+        if not self.flask_app:
+            from apps import create_app
+            self.flask_app = create_app()
+            
+        with self.flask_app.app_context():
+            return self.run(*args, **kwargs)
+            
+    def after_return(self, status, retval, task_id, args, kwargs, einfo):
+        """Handler called after the task returns."""
+        if status == 'FAILURE':
+            logger.error(f"Task {self.name}[{task_id}] failed: {retval if isinstance(retval, dict) else 'Unknown error'}")
+            if einfo:
+                logger.error(f"Exception info: {einfo}")
+                
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        """Error handler."""
+        logger.error(f"Task {self.name}[{task_id}] failed: {exc}")
+        logger.error(f"Args: {args}, Kwargs: {kwargs}")
+        if einfo:
+            logger.error(f"Exception traceback: {einfo}")
+            
+    flask_app = None
+
+def init_celery(app=None):
+    """Initialize Celery with a Flask app."""
+    logger.info("Initializing Celery with Flask app")
     
-    # Error handling
-    task_acks_late=True,  # Only acknowledge after task completes
-    task_reject_on_worker_lost=True,  # Reject tasks if worker disconnects
-    task_acks_on_failure_or_timeout=False,  # Don't acknowledge failed tasks
+    # Update the base task class to work with Flask context
+    celery.Task = FlaskTask
     
-    # Redis connection settings
-    broker_connection_retry=True,
-    broker_connection_retry_on_startup=True,
-    broker_connection_max_retries=100,
-    broker_connection_timeout=30,
-    broker_pool_limit=10,
-    broker_heartbeat=10,
+    # If app provided, store it on the task class
+    if app:
+        celery.Task.flask_app = app
+        
+    # Log Celery configuration
+    logger.info(f"Celery broker URL: {celery.conf.broker_url}")
+    logger.info(f"Celery result backend: {celery.conf.result_backend}")
+    logger.info(f"Celery task routes: {celery.conf.task_routes}")
     
-    # Result backend settings
-    result_backend_transport_options={
-        'retry_policy': {
-            'timeout': 10.0,  # Increased from 5.0
-            'max_retries': 5,  # Increased from 3
-        },
-        'global_keyprefix': 'celery_results'
-    },
-    
-    # Redis specific settings
-    redis_socket_timeout=60,  # Increased from 30
-    redis_socket_connect_timeout=60,  # Increased from 30
-    redis_retry_on_timeout=True,
-    redis_max_connections=10,
-    
-    # Worker settings
-    worker_concurrency=2,  # Reduced from 4 to prevent memory issues on Render
-    worker_enable_remote_control=True,
-    worker_send_task_events=True,
-    task_send_sent_event=True
-)
+    return celery
 
 @after_setup_logger.connect
 def setup_loggers(logger, *args, **kwargs):
@@ -76,9 +113,3 @@ def setup_loggers(logger, *args, **kwargs):
     ))
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)  # Changed to DEBUG for more verbose logging
-
-def init_celery(app):
-    """Initialize Celery with Flask app"""
-    celery.conf.update(app.config)
-    app.extensions['celery'] = celery
-    return celery

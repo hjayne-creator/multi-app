@@ -380,193 +380,260 @@ def process_workflow_task(self, job_id):
 @celery.task(bind=True, autoretry_for=(), retry=False)
 def continue_workflow_after_selection_task(self, job_id):
     """Celery task to continue workflow after theme selection, using in_progress flag for concurrency control"""
-    from flask import current_app
+    logger.info(f"Starting continue_workflow_after_selection_task for job_id: {job_id}")
     
-    with current_app.app_context():
-        db.session.expire_all()
-        # Atomically claim the job for processing
-        result = db.session.query(Job).filter(
-            Job.id == job_id,
-            Job.in_progress == False
-        ).update({'in_progress': True})
-        db.session.commit()
-        if result == 0:
-            current_app.logger.warning(f"[Job {job_id}] Skipping: in_progress already True (another worker is processing)")
-            return {'status': 'skipped', 'message': 'Job is already being processed by another worker.'}
-        
-        # Now safe to proceed
-        job = db.session.query(Job).get(job_id)
-        db.session.refresh(job)
-        try:
-            workflow_manager = WorkflowManager()
-            workflow_manager.load_state(job.workflow_data)
+    try:
+        # Ensure we use the Flask app context
+        with flask_app.app_context():
+            # Log task start
+            logger.info(f"[Job {job_id}] Starting post-theme selection workflow")
             
-            # Get the selected theme
-            selected_theme = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
-            if not selected_theme:
-                job.status = 'error'
-                job.error = "No theme was selected"
-                add_message_to_job(job, "❌ Error: No theme was selected")
+            # Refresh the session to avoid stale data
+            db.session.expire_all()
+            
+            # First, check if job exists
+            job = Job.query.get(job_id)
+            if not job:
+                logger.error(f"[Job {job_id}] Job not found in database")
+                return {'status': 'error', 'message': f'Job {job_id} not found'}
+            
+            # Log the current job status
+            logger.info(f"[Job {job_id}] Current status: {job.status}, in_progress: {job.in_progress}")
+            
+            # Atomically claim the job for processing
+            try:
+                result = db.session.query(Job).filter(
+                    Job.id == job_id,
+                    Job.in_progress == False
+                ).update({'in_progress': True})
                 db.session.commit()
-                return {'status': 'error', 'message': "No theme was selected"}
+                logger.info(f"[Job {job_id}] Attempted to claim job, result: {result}")
+                
+                if result == 0:
+                    logger.warning(f"[Job {job_id}] Skipping: in_progress already True (another worker is processing)")
+                    return {'status': 'skipped', 'message': 'Job is already being processed by another worker.'}
+            except Exception as e:
+                logger.error(f"[Job {job_id}] Error claiming job: {str(e)}")
+                db.session.rollback()
+                return {'status': 'error', 'message': f'Failed to claim job: {str(e)}'}
             
-            # Update task state
-            self.update_state(state='PROGRESS',
-                            meta={'current': 60, 'total': 100,
-                                  'status': 'Processing selected theme'})
+            # Reload job after update
+            job = db.session.query(Job).get(job_id)
+            db.session.refresh(job)
             
-            # --- Step 1: Content Cluster Generation ---
-            add_message_to_job(job, "📝 STRATEGY PHASE: Creating content clusters")
-            add_message_to_job(job, f"🎯 Processing selected theme: {selected_theme.title}")
-            #add_message_to_job(job, "🤖 Generating content clusters and hierarchy...")
+            # Add a message indicating the task has started
+            add_message_to_job(job, "🚀 Continuing workflow with selected theme")
             db.session.commit()
-            
-            strategy_message = f"""
-            ## Brand Brief
-            {job.brand_brief}
-            
-            ## Selected Theme
-            **{selected_theme.title}**
-            {selected_theme.description}
-            
-            \nPlease create a content cluster framework based on this theme.
-            """
             
             try:
-                content_cluster = run_agent_with_openai(CONTENT_STRATEGIST_CLUSTER_PROMPT, strategy_message)
-                if not content_cluster or len(content_cluster.strip()) < 100:
-                    raise Exception("OpenAI API returned an empty or too short response for content cluster generation.")
-                job.content_cluster = content_cluster
-                job.progress = 80
-                add_message_to_job(job, "✅ Content clusters created")
+                # Load workflow manager
+                workflow_manager = WorkflowManager()
+                if not job.workflow_data:
+                    job.workflow_data = {}
+                workflow_manager.load_state(job.workflow_data)
+                
+                # Get the selected theme
+                selected_theme = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
+                if not selected_theme:
+                    logger.error(f"[Job {job_id}] No theme was selected")
+                    job.status = 'error'
+                    job.error = "No theme was selected"
+                    job.in_progress = False
+                    add_message_to_job(job, "❌ Error: No theme was selected")
+                    db.session.commit()
+                    return {'status': 'error', 'message': "No theme was selected"}
+                
+                logger.info(f"[Job {job_id}] Selected theme: {selected_theme.title}")
+                
+                # Update task state
+                self.update_state(state='PROGRESS',
+                                meta={'current': 60, 'total': 100,
+                                      'status': 'Processing selected theme'})
+                
+                # --- Step 1: Content Cluster Generation ---
+                add_message_to_job(job, "📝 STRATEGY PHASE: Creating content clusters")
+                add_message_to_job(job, f"🎯 Processing selected theme: {selected_theme.title}")
+                db.session.commit()
+                
+                strategy_message = f"""
+                ## Brand Brief
+                {job.brand_brief}
+                
+                ## Selected Theme
+                **{selected_theme.title}**
+                {selected_theme.description}
+                
+                \nPlease create a content cluster framework based on this theme.
+                """
+                
+                try:
+                    logger.info(f"[Job {job_id}] Starting content cluster generation")
+                    content_cluster = run_agent_with_openai(CONTENT_STRATEGIST_CLUSTER_PROMPT, strategy_message)
+                    if not content_cluster or len(content_cluster.strip()) < 100:
+                        raise Exception("OpenAI API returned an empty or too short response for content cluster generation.")
+                    job.content_cluster = content_cluster
+                    job.progress = 80
+                    add_message_to_job(job, "✅ Content clusters created")
+                    db.session.commit()
+                    logger.info(f"[Job {job_id}] Content clusters created successfully")
+                    
+                    self.update_state(state='PROGRESS',
+                                     meta={'current': 80, 'total': 100,
+                                           'status': 'Content clusters created'})
+                except Exception as e:
+                    logger.error(f"[Job {job_id}] Error in content cluster generation: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    job.status = 'error'
+                    job.error = f"Error in content cluster generation: {str(e)}"
+                    job.in_progress = False
+                    add_message_to_job(job, f"❌ Error in content cluster generation: {str(e)}")
+                    db.session.commit()
+                    return {'status': 'error', 'message': str(e)}
+
+                # --- Step 2: Article Ideation ---
+                add_message_to_job(job, "💡 ARTICLE IDEATION PHASE: Developing content ideas")
+                db.session.commit()
+                
+                # Idempotency check: skip OpenAI call if article_ideas already exists and is valid
+                if job.article_ideas and len(job.article_ideas.strip()) >= 100:
+                    logger.info(f"[Job {job_id}] Article ideas already exist, skipping OpenAI call")
+                    add_message_to_job(job, "ℹ️ Article ideas already exist, skipping OpenAI call.")
+                    article_ideas = job.article_ideas
+                else:
+                    ideation_message = f"""
+                    ## Brand Brief
+                    {job.brand_brief}
+                    
+                    ## Selected Theme
+                    **{selected_theme.title}**
+                    {selected_theme.description}
+                    
+                    ## Content Cluster Framework
+                    {content_cluster}
+                    
+                    \nPlease create article ideas based on this content framework.
+                    """
+                    try:
+                        logger.info(f"[Job {job_id}] Starting article ideation")
+                        article_ideas = run_agent_with_openai(CONTENT_WRITER_PROMPT, ideation_message)
+                        if not article_ideas or len(article_ideas.strip()) < 100:
+                            raise Exception("OpenAI API returned an empty or too short response for article ideation.")
+                        job.article_ideas = article_ideas
+                        db.session.commit()
+                        add_message_to_job(job, "✅ Article ideas generated")
+                        logger.info(f"[Job {job_id}] Article ideas generated successfully")
+                    except Exception as e:
+                        logger.error(f"[Job {job_id}] Error in article ideation: {str(e)}")
+                        logger.error(traceback.format_exc())
+                        job.status = 'error'
+                        job.error = f"Error in article ideation: {str(e)}"
+                        job.in_progress = False
+                        add_message_to_job(job, f"❌ Error in article ideation: {str(e)}")
+                        db.session.commit()
+                        return {'status': 'error', 'message': str(e)}
+                
+                job.progress = 90
                 db.session.commit()
                 self.update_state(state='PROGRESS',
-                                 meta={'current': 80, 'total': 100,
-                                       'status': 'Content clusters created'})
-            except Exception as e:
-                job.status = 'error'
-                job.error = f"Error in content cluster generation: {str(e)}"
-                add_message_to_job(job, f"❌ Error in content cluster generation: {str(e)}")
-                current_app.logger.error(f"Error in content cluster generation: {str(e)}")
-                current_app.logger.error(traceback.format_exc())
+                                 meta={'current': 90, 'total': 100,
+                                       'status': 'Article ideas generated'})
+
+                # --- Step 3: Final Plan Generation ---
+                add_message_to_job(job, "📊 EDITING PHASE: Adding final touches to the content plan")
                 db.session.commit()
-                return {'status': 'error', 'message': str(e)}
+                
+                # Idempotency check: skip OpenAI call if final_plan already exists and is valid
+                if job.final_plan and len(job.final_plan.strip()) >= 100:
+                    logger.info(f"[Job {job_id}] Final plan already exists, skipping OpenAI call")
+                    add_message_to_job(job, "ℹ️ Final plan already exists, skipping OpenAI call.")
+                    final_plan = job.final_plan
+                else:
+                    # Validate required fields before making the API call
+                    if not job.brand_brief or not job.search_analysis:
+                        error_msg = "Missing required data for final plan generation"
+                        logger.error(f"[Job {job_id}] {error_msg}")
+                        job.status = 'error'
+                        job.error = error_msg
+                        job.in_progress = False
+                        add_message_to_job(job, f"❌ {error_msg}")
+                        db.session.commit()
+                        return {'status': 'error', 'message': error_msg}
 
-            # --- Step 2: Article Ideation ---
-            add_message_to_job(job, "💡 ARTICLE IDEATION PHASE: Developing content ideas")
-            #add_message_to_job(job, "🤖 Generating article concepts and titles...")
-            db.session.commit()
-            
-            # Idempotency check: skip OpenAI call if article_ideas already exists and is valid
-            if job.article_ideas and len(job.article_ideas.strip()) >= 100:
-                add_message_to_job(job, "ℹ️ Article ideas already exist, skipping OpenAI call.")
-                article_ideas = job.article_ideas
-            else:
-                ideation_message = f"""
-                ## Brand Brief
-                {job.brand_brief}
-                
-                ## Selected Theme
-                **{selected_theme.title}**
-                {selected_theme.description}
-                
-                ## Content Cluster Framework
-                {content_cluster}
-                
-                \nPlease create article ideas based on this content framework.
-                """
-                try:
-                    article_ideas = run_agent_with_openai(CONTENT_WRITER_PROMPT, ideation_message)
-                    if not article_ideas or len(article_ideas.strip()) < 100:
-                        raise Exception("OpenAI API returned an empty or too short response for article ideation.")
-                    job.article_ideas = article_ideas
-                    db.session.commit()
-                    add_message_to_job(job, "✅ Article ideas generated")
-                except Exception as e:
-                    job.status = 'error'
-                    job.error = f"Error in article ideation: {str(e)}"
-                    add_message_to_job(job, f"❌ Error in article ideation: {str(e)}")
-                    current_app.logger.error(f"Error in article ideation: {str(e)}")
-                    current_app.logger.error(traceback.format_exc())
-                    db.session.commit()
-                    return {'status': 'error', 'message': str(e)}
-            
-            job.progress = 90
-            self.update_state(state='PROGRESS',
-                             meta={'current': 90, 'total': 100,
-                                   'status': 'Article ideas generated'})
+                    finalization_message = f"""
+                    ## Brand Brief
+                    {job.brand_brief}
 
-            # --- Step 3: Final Plan Generation ---
-            add_message_to_job(job, "📊 EDITING PHASE: Adding final touches to the content plan")
-            db.session.commit()
-            
-            # Idempotency check: skip OpenAI call if final_plan already exists and is valid
-            if job.final_plan and len(job.final_plan.strip()) >= 100:
-                add_message_to_job(job, "ℹ️ Final plan already exists, skipping OpenAI call.")
-                final_plan = job.final_plan
-            else:
-                # Validate required fields before making the API call
-                if not job.brand_brief or not job.search_analysis:
-                    error_msg = "Missing required data for final plan generation"
-                    job.status = 'error'
-                    job.error = error_msg
-                    add_message_to_job(job, f"❌ {error_msg}")
-                    current_app.logger.error(f"Error in final plan generation: {error_msg}")
-                    db.session.commit()
-                    return {'status': 'error', 'message': error_msg}
-
-                finalization_message = f"""
-                ## Brand Brief
-                {job.brand_brief}
-
-                ## Search Results Analysis
-                {job.search_analysis}
-                
-                ## Selected Theme
-                **{selected_theme.title}**
-                {selected_theme.description}
-                
-                Please create an organized and polished final content plan by reviewing and refining the brand brief and search analysis. 
-                The Pillar Topics & Articles section will be added separately.
-                """
-                try:
-                    final_plan = run_agent_with_openai(CONTENT_EDITOR_PROMPT, finalization_message)
-                    if not final_plan or len(final_plan.strip()) < 100:
-                        raise Exception("OpenAI API returned an empty or too short response for final plan generation.")
+                    ## Search Results Analysis
+                    {job.search_analysis}
                     
-                    # Validate the response format
-                    if not any(marker in final_plan for marker in ['##', '#']):
-                        raise Exception("Generated content plan is missing proper markdown formatting")
+                    ## Selected Theme
+                    **{selected_theme.title}**
+                    {selected_theme.description}
                     
-                    job.final_plan = final_plan
-                    job.progress = 100
-                    workflow_manager.advance_phase()  # To COMPLETION
-                    job.workflow_data = workflow_manager.save_state()
-                    job.current_phase = workflow_manager.current_phase
-                    job.status = 'completed'
-                    job.completed_at = datetime.now()
-                    add_message_to_job(job, "✅ Content plan completed successfully!")
-                    add_message_to_job(job, "🎉 Your content strategy is ready!")
-                    db.session.commit()
+                    Please create an organized and polished final content plan by reviewing and refining the brand brief and search analysis. 
+                    The Pillar Topics & Articles section will be added separately.
+                    """
+                    try:
+                        logger.info(f"[Job {job_id}] Starting final plan generation")
+                        final_plan = run_agent_with_openai(CONTENT_EDITOR_PROMPT, finalization_message)
+                        if not final_plan or len(final_plan.strip()) < 100:
+                            raise Exception("OpenAI API returned an empty or too short response for final plan generation.")
+                        
+                        # Validate the response format
+                        if not any(marker in final_plan for marker in ['##', '#']):
+                            raise Exception("Generated content plan is missing proper markdown formatting")
+                        
+                        job.final_plan = final_plan
+                        logger.info(f"[Job {job_id}] Final plan generated successfully")
+                    except Exception as e:
+                        logger.error(f"[Job {job_id}] Error in final plan generation: {str(e)}")
+                        logger.error(traceback.format_exc())
+                        error_msg = f"Error in final plan generation: {str(e)}"
+                        job.status = 'error'
+                        job.error = error_msg
+                        job.in_progress = False
+                        add_message_to_job(job, f"❌ {error_msg}")
+                        db.session.commit()
+                        return {'status': 'error', 'message': str(e)}
+                
+                # Complete the job
+                logger.info(f"[Job {job_id}] Completing job")
+                job.progress = 100
+                workflow_manager.advance_phase()  # To COMPLETION
+                job.workflow_data = workflow_manager.save_state()
+                job.current_phase = workflow_manager.current_phase
+                job.status = 'completed'
+                job.completed_at = datetime.now()
+                job.in_progress = False
+                add_message_to_job(job, "✅ Content plan completed successfully!")
+                add_message_to_job(job, "🎉 Your content strategy is ready!")
+                db.session.commit()
+                logger.info(f"[Job {job_id}] Task completed successfully")
+                return {'status': 'completed'}
+
+            except Exception as e:
+                logger.error(f"[Job {job_id}] Error in post-theme selection workflow: {str(e)}")
+                logger.error(traceback.format_exc())
+                error_msg = f"Error in theme selection workflow: {str(e)}"
+                job.status = 'error'
+                job.error = error_msg
+                job.in_progress = False
+                add_message_to_job(job, f"❌ {error_msg}")
+                db.session.commit()
+                return {'status': 'error', 'message': error_msg}
+    except Exception as e:
+        logger.error(f"[Job {job_id}] Unexpected error in task: {str(e)}")
+        logger.error(traceback.format_exc())
+        try:
+            # Try to update the job if possible
+            with flask_app.app_context():
+                job = Job.query.get(job_id)
+                if job:
+                    job.status = 'error'
+                    job.error = f"Unexpected error: {str(e)}"
                     job.in_progress = False
+                    add_message_to_job(job, f"❌ Unexpected error: {str(e)}")
                     db.session.commit()
-                    return {'status': 'completed'}
-                except Exception as e:
-                    error_msg = f"Error in final plan generation: {str(e)}"
-                    job.status = 'error'
-                    job.error = error_msg
-                    add_message_to_job(job, f"❌ {error_msg}")
-                    current_app.logger.error(error_msg)
-                    current_app.logger.error(traceback.format_exc())
-                    db.session.commit()
-                    return {'status': 'error', 'message': str(e)}
-
-        except Exception as e:
-            job.status = 'error'
-            job.error = str(e)
-            job.in_progress = False
-            add_message_to_job(job, f"❌ Error in theme selection workflow: {str(e)}")
-            current_app.logger.error(f"Error in theme selection workflow: {str(e)}")
-            current_app.logger.error(traceback.format_exc())
-            db.session.commit()
-            return {'status': 'error', 'message': str(e)}
+        except:
+            pass
+        return {'status': 'error', 'message': f"Unexpected error: {str(e)}"}

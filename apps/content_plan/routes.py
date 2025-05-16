@@ -280,9 +280,23 @@ def create_blueprint():
                 return jsonify({'error': f'Job not found: {job_id}'}), 404
             
             # Check if job is already being processed or not in correct state
-            if job.in_progress or job.status != 'awaiting_selection':
-                current_app.logger.warning(f"Theme selection rejected: job {job_id} in_progress={job.in_progress}, status={job.status}")
-                return jsonify({'error': 'Job is already being processed or not awaiting selection'}), 409
+            if job.in_progress:
+                current_app.logger.warning(f"Theme selection rejected: job {job_id} is already in progress")
+                return jsonify({'error': 'Job is already being processed'}), 409
+                
+            if job.status != 'awaiting_selection':
+                # Special case: if job is already 'processing' or 'completed', 
+                # return success to avoid frustrating users with refresh/back button
+                if job.status in ['processing', 'completed']:
+                    current_app.logger.info(f"Job {job_id} status is '{job.status}', returning success for idempotency")
+                    return jsonify({
+                        'status': 'success',
+                        'message': f'Job is already in {job.status} state',
+                        'theme': None
+                    }), 200
+                else:
+                    current_app.logger.warning(f"Theme selection rejected: job {job_id} status={job.status}")
+                    return jsonify({'error': f'Job is not awaiting theme selection (status={job.status})'}), 409
             
             # Check if we received valid JSON
             if not request.is_json:
@@ -310,64 +324,95 @@ def create_blueprint():
                 current_app.logger.error(f"Invalid theme number format: {theme_number}")
                 return jsonify({'error': 'Invalid theme number format, must be digits only'}), 400
             
-            # Idempotency check: if a theme is already selected or job is not awaiting_selection, reject
+            # Idempotency check: if a theme is already selected
             already_selected = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
             if already_selected:
                 current_app.logger.warning(f"Theme selection already made for job {job_id}")
+                
+                # Continue the workflow if not already in progress
+                if job.status == 'awaiting_selection':
+                    current_app.logger.info(f"Job {job_id} still in awaiting_selection - starting workflow")
+                    job.status = 'processing'
+                    job.in_progress = False  # Ensure flag is reset
+                    job.messages.append(f"Reprocessing selected theme: {already_selected.title}")
+                    db.session.commit()
+                    
+                    # Queue the Celery task
+                    try:
+                        _, continue_workflow_after_selection_task = get_celery_tasks()
+                        task = continue_workflow_after_selection_task.delay(job_id)
+                        current_app.logger.info(f"Celery task queued for job {job_id}: {task.id}")
+                    except Exception as celery_error:
+                        current_app.logger.error(f"Failed to queue Celery task: {str(celery_error)}")
+                        # Continue without raising an error since theme selection itself succeeded
+                
                 return jsonify({
                     'status': 'success', 
                     'message': 'Theme already selected',
                     'theme': already_selected.to_dict()
-                }), 200  # Return 200 for idempotency
-            
-            # Update job with selected theme and advance workflow
-            workflow_manager = WorkflowManager()
-            workflow_manager.load_state(job.workflow_data)
-            
-            # Find the selected theme
-            theme_number = int(theme_number)
-            themes = Theme.query.filter_by(job_id=job_id).all()
-            
-            if not themes or len(themes) == 0:
-                current_app.logger.error(f"No themes found for job {job_id}")
-                return jsonify({'error': 'No themes found for this job'}), 404
-            
-            if 1 <= theme_number <= len(themes):
-                selected_theme = themes[theme_number-1]
-                selected_theme.is_selected = True
-                db.session.commit()
-            else:
-                current_app.logger.error(f"Theme number {theme_number} out of range (1-{len(themes)})")
-                return jsonify({'error': f'Theme number out of range (1-{len(themes)})'}), 400
-            
-            # Process theme selection
-            workflow_manager.process_theme_selection(theme_number, [theme.to_dict() for theme in themes])
-            
-            # Save updated workflow state
-            job.workflow_data = workflow_manager.save_state()
-            job.current_phase = workflow_manager.current_phase
-            job.messages.append(f"Selected theme: {selected_theme.title}")
-            job.status = 'processing'
-            db.session.commit()
-            
-            # Continue workflow in Celery
-            try:
-                _, continue_workflow_after_selection_task = get_celery_tasks()
-                continue_workflow_after_selection_task.delay(job_id)
-            except Exception as celery_error:
-                # Even if Celery fails, consider the theme selection successful
-                current_app.logger.error(f"Failed to queue Celery task: {str(celery_error)}")
-                return jsonify({
-                    'status': 'success',
-                    'message': 'Theme selected but background processing delayed',
-                    'theme': selected_theme.to_dict()
                 }), 200
             
-            return jsonify({
-                'status': 'success',
-                'message': 'Theme selected',
-                'theme': selected_theme.to_dict()
-            }), 200
+            # Update job with selected theme and advance workflow
+            try:
+                workflow_manager = WorkflowManager()
+                if not job.workflow_data:
+                    job.workflow_data = {}
+                workflow_manager.load_state(job.workflow_data)
+                
+                # Find the selected theme
+                theme_number = int(theme_number)
+                themes = Theme.query.filter_by(job_id=job_id).all()
+                
+                if not themes or len(themes) == 0:
+                    current_app.logger.error(f"No themes found for job {job_id}")
+                    return jsonify({'error': 'No themes found for this job'}), 404
+                
+                if 1 <= theme_number <= len(themes):
+                    selected_theme = themes[theme_number-1]
+                    selected_theme.is_selected = True
+                    db.session.commit()
+                else:
+                    current_app.logger.error(f"Theme number {theme_number} out of range (1-{len(themes)})")
+                    return jsonify({'error': f'Theme number out of range (1-{len(themes)})'}), 400
+                
+                # Process theme selection
+                workflow_manager.process_theme_selection(theme_number, [theme.to_dict() for theme in themes])
+                
+                # Save updated workflow state
+                job.workflow_data = workflow_manager.save_state()
+                job.current_phase = workflow_manager.current_phase
+                job.messages.append(f"Selected theme: {selected_theme.title}")
+                job.status = 'processing'
+                job.in_progress = False  # Ensure flag is reset
+                db.session.commit()
+                
+                # Continue workflow in Celery - with better error handling
+                try:
+                    _, continue_workflow_after_selection_task = get_celery_tasks()
+                    task = continue_workflow_after_selection_task.delay(job_id)
+                    current_app.logger.info(f"Celery task queued for job {job_id}: {task.id}")
+                except Exception as celery_error:
+                    # Log the error but don't fail the request
+                    current_app.logger.error(f"Failed to queue Celery task: {str(celery_error)}")
+                    import traceback
+                    current_app.logger.error(traceback.format_exc())
+                    # Even if Celery fails, consider the theme selection successful
+                    return jsonify({
+                        'status': 'success',
+                        'message': 'Theme selected but background processing delayed',
+                        'theme': selected_theme.to_dict()
+                    }), 200
+                
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Theme selected',
+                    'theme': selected_theme.to_dict()
+                }), 200
+            except Exception as workflow_error:
+                current_app.logger.error(f"Error in workflow processing: {str(workflow_error)}")
+                import traceback
+                current_app.logger.error(traceback.format_exc())
+                return jsonify({'error': f'Error in workflow processing: {str(workflow_error)}'}), 500
         
         except Exception as e:
             current_app.logger.error(f"Error in theme selection: {str(e)}")
