@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, flash, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify, flash, current_app, Response
 from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from wtforms import StringField, TextAreaField
@@ -23,7 +23,7 @@ from apps.content_plan.prompts import (
     CONTENT_WRITER_PROMPT,
     CONTENT_EDITOR_PROMPT
 )
-from sqlalchemy import text
+from sqlalchemy import text, desc
 
 # Create CSRF protection instance
 csrf = CSRFProtect()
@@ -254,10 +254,30 @@ def create_blueprint():
     @bp.route('/api/theme-selection/<job_id>', methods=['POST'])
     @csrf.exempt
     def theme_selection(job_id):
+        """API route for theme selection
+        
+        This endpoint receives a theme selection from the client and processes it,
+        then starts the next stage of workflow in Celery.
+        """
         try:
+            # Basic validation - check if job_id is valid
+            if not job_id:
+                current_app.logger.error("No job_id provided")
+                return jsonify({'error': 'No job_id provided'}), 400
+                
+            # Log request data for debugging
+            current_app.logger.info(f"Theme selection request for job {job_id}")
+            current_app.logger.info(f"Request content type: {request.content_type}")
+            current_app.logger.info(f"Request data: {request.data}")
+            
             # Get a fresh copy of the job
             db.session.expire_all()  # Expire all objects in the session
-            job = Job.query.get_or_404(job_id)
+            
+            # Check if job exists
+            job = Job.query.get(job_id)
+            if not job:
+                current_app.logger.error(f"Job not found: {job_id}")
+                return jsonify({'error': f'Job not found: {job_id}'}), 404
             
             # Check if job is already being processed or not in correct state
             if job.in_progress or job.status != 'awaiting_selection':
@@ -266,22 +286,39 @@ def create_blueprint():
             
             # Check if we received valid JSON
             if not request.is_json:
-                current_app.logger.error(f"Received non-JSON request: {request.data}")
-                return jsonify({'error': 'Invalid request format, expected JSON'}), 400
+                # Try to handle form submission as fallback
+                if request.form and 'theme_number' in request.form:
+                    theme_number = request.form.get('theme_number')
+                    current_app.logger.info(f"Received theme selection via form: {theme_number} for job {job_id}")
+                else:
+                    current_app.logger.error(f"Received non-JSON request: {request.data}")
+                    return jsonify({'error': 'Invalid request format, expected JSON'}), 400
+            else:
+                data = request.json
+                theme_number = data.get('theme_number')
+                current_app.logger.info(f"Received theme selection via JSON: {theme_number} for job {job_id}")
+            
+            # Validate theme number
+            if not theme_number:
+                return jsonify({'error': 'Theme number not provided'}), 400
                 
-            data = request.json
-            theme_number = data.get('theme_number')
-            
-            current_app.logger.info(f"Received theme selection: {theme_number} for job {job_id}")
-            
-            if not theme_number or not theme_number.isdigit():
-                return jsonify({'error': 'Invalid theme number'}), 400
+            # Convert to string if it's not already (to handle different client types)
+            if not isinstance(theme_number, str):
+                theme_number = str(theme_number)
+                
+            if not theme_number.isdigit():
+                current_app.logger.error(f"Invalid theme number format: {theme_number}")
+                return jsonify({'error': 'Invalid theme number format, must be digits only'}), 400
             
             # Idempotency check: if a theme is already selected or job is not awaiting_selection, reject
             already_selected = Theme.query.filter_by(job_id=job_id, is_selected=True).first()
             if already_selected:
                 current_app.logger.warning(f"Theme selection already made for job {job_id}")
-                return jsonify({'error': 'Theme already selected'}), 409
+                return jsonify({
+                    'status': 'success', 
+                    'message': 'Theme already selected',
+                    'theme': already_selected.to_dict()
+                }), 200  # Return 200 for idempotency
             
             # Update job with selected theme and advance workflow
             workflow_manager = WorkflowManager()
@@ -291,13 +328,17 @@ def create_blueprint():
             theme_number = int(theme_number)
             themes = Theme.query.filter_by(job_id=job_id).all()
             
+            if not themes or len(themes) == 0:
+                current_app.logger.error(f"No themes found for job {job_id}")
+                return jsonify({'error': 'No themes found for this job'}), 404
+            
             if 1 <= theme_number <= len(themes):
                 selected_theme = themes[theme_number-1]
                 selected_theme.is_selected = True
                 db.session.commit()
             else:
-                current_app.logger.error(f"Theme number {theme_number} out of range")
-                return jsonify({'error': 'Theme number out of range'}), 400
+                current_app.logger.error(f"Theme number {theme_number} out of range (1-{len(themes)})")
+                return jsonify({'error': f'Theme number out of range (1-{len(themes)})'}), 400
             
             # Process theme selection
             workflow_manager.process_theme_selection(theme_number, [theme.to_dict() for theme in themes])
@@ -310,8 +351,17 @@ def create_blueprint():
             db.session.commit()
             
             # Continue workflow in Celery
-            _, continue_workflow_after_selection_task = get_celery_tasks()
-            continue_workflow_after_selection_task.delay(job_id)
+            try:
+                _, continue_workflow_after_selection_task = get_celery_tasks()
+                continue_workflow_after_selection_task.delay(job_id)
+            except Exception as celery_error:
+                # Even if Celery fails, consider the theme selection successful
+                current_app.logger.error(f"Failed to queue Celery task: {str(celery_error)}")
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Theme selected but background processing delayed',
+                    'theme': selected_theme.to_dict()
+                }), 200
             
             return jsonify({
                 'status': 'success',

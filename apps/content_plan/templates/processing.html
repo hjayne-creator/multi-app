@@ -229,122 +229,124 @@
             // Ensure themeId is a string with digits only
             const themeIdStr = String(parseInt(themeId));
             
-            // If previous XHR attempt failed, use form submission directly
-            if (xhrAttemptFailed) {
-                submitWithForm(themeIdStr);
-                return;
-            }
+            // Set up form for fallback submission
+            themeInput.value = themeIdStr;
+            themeForm.action = `/apps/content-plan/api/theme-selection/${jobId}`;
             
-            let requestUrl;
+            // Try multiple approaches in sequence
+            submitWithXhr()
+                .catch(() => {
+                    console.log('XHR failed, trying fetch...');
+                    return submitWithFetch();
+                })
+                .catch(() => {
+                    console.log('Fetch failed, trying form submission...');
+                    submitWithForm();
+                });
             
-            try {
-                // Get the current location path and construct the API URL
-                const pathParts = window.location.pathname.split('/');
-                const processIndex = pathParts.indexOf('process');
-                
-                if (processIndex !== -1) {
-                    // Normal path construction
-                    const basePath = pathParts.slice(0, processIndex + 1).join('/');
-                    const apiPath = formatURL(basePath.replace('/process', '/api/theme-selection'));
-                    requestUrl = `${apiPath}/${jobId}`;
-                } else {
-                    // Fallback for when 'process' is not in the path
-                    console.log("Process not found in path, using default URL");
-                    requestUrl = formatURL(`/apps/content-plan/api/theme-selection/${jobId}`);
-                }
-            } catch (error) {
-                // Ultimate fallback
-                console.error("Error constructing API URL:", error);
-                requestUrl = formatURL(`/apps/content-plan/api/theme-selection/${jobId}`);
-            }
-            
-            const requestBody = { theme_number: themeIdStr };
-            
-            console.log(`Submitting theme selection: ${themeIdStr} for job ${jobId}`);
-            console.log(`Request URL: ${requestUrl}`);
-            console.log(`Request body:`, requestBody);
-            
-            // Create a new XMLHttpRequest to handle the request directly
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', requestUrl, true);
-            xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.setRequestHeader('Accept', 'application/json');
-            xhr.withCredentials = true;  // Include credentials for cross-domain requests
-            
-            xhr.onload = function() {
-                console.log(`Response status: ${xhr.status}`);
-                console.log(`Response headers: ${xhr.getAllResponseHeaders()}`);
-                console.log(`Response body: ${xhr.responseText}`);
-                
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    try {
-                        const data = JSON.parse(xhr.responseText);
-                        console.log('Theme selection successful:', data);
-                        
-                        // Hide theme selection and update UI
-                        themeSelection.classList.remove('visible');
-                        statusMessage.textContent = 'Processing selected theme...';
-                        
-                        // Make sure we continue checking status
-                        if (!checkInterval) {
-                            checkInterval = setInterval(checkStatus, 2000);
-                        }
-                    } catch (e) {
-                        console.error('Error parsing JSON response:', e);
-                        handleThemeSelectionError('Invalid JSON response from server');
-                    }
-                } else {
-                    console.error('Error response:', xhr.responseText);
-                    xhrAttemptFailed = true;
+            // Helper function for XHR submission
+            function submitWithXhr() {
+                return new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    const requestUrl = `/apps/content-plan/api/theme-selection/${jobId}`;
                     
-                    // Try form submission approach as fallback
-                    submitWithForm(themeIdStr);
-                }
-            };
+                    xhr.open('POST', requestUrl, true);
+                    xhr.setRequestHeader('Content-Type', 'application/json');
+                    xhr.setRequestHeader('Accept', 'application/json');
+                    xhr.timeout = 10000; // 10 seconds timeout
+                    
+                    xhr.onload = function() {
+                        console.log(`XHR response status: ${xhr.status}`);
+                        console.log(`XHR response body: ${xhr.responseText}`);
+                        
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            try {
+                                const data = JSON.parse(xhr.responseText);
+                                console.log('Theme selection successful:', data);
+                                handleSuccess();
+                                resolve(data);
+                            } catch (e) {
+                                console.error('Error parsing JSON response:', e);
+                                reject(e);
+                            }
+                        } else {
+                            reject(new Error(`Server returned ${xhr.status}`));
+                        }
+                    };
+                    
+                    xhr.onerror = function() {
+                        console.error('XHR network error occurred');
+                        reject(new Error('Network error'));
+                    };
+                    
+                    xhr.ontimeout = function() {
+                        console.error('XHR request timed out');
+                        reject(new Error('Request timed out'));
+                    };
+                    
+                    xhr.send(JSON.stringify({ theme_number: themeIdStr }));
+                });
+            }
             
-            xhr.onerror = function() {
-                console.error('Network error occurred');
-                xhrAttemptFailed = true;
+            // Helper function for fetch submission
+            function submitWithFetch() {
+                const requestUrl = `/apps/content-plan/api/theme-selection/${jobId}`;
                 
-                // Try form submission approach as fallback
-                submitWithForm(themeIdStr);
-            };
+                return fetch(requestUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ theme_number: themeIdStr })
+                })
+                .then(response => {
+                    console.log(`Fetch response status: ${response.status}`);
+                    return response.text().then(text => {
+                        console.log(`Fetch response text: ${text}`);
+                        try {
+                            const data = JSON.parse(text);
+                            if (!response.ok) {
+                                throw new Error(data.error || `Server returned ${response.status}`);
+                            }
+                            handleSuccess();
+                            return data;
+                        } catch (e) {
+                            throw new Error('Invalid JSON response');
+                        }
+                    });
+                });
+            }
             
             // Helper function for form submission
-            function submitWithForm(themeNum) {
-                console.log('Trying form submission as fallback');
+            function submitWithForm() {
+                console.log('Submitting via form');
                 
-                // Set up the form
-                themeInput.value = themeNum;
-                themeForm.action = requestUrl;
+                // Use an iframe to prevent page reload
+                const iframe = document.createElement('iframe');
+                iframe.name = 'form-target';
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
                 
-                // Submit the form
+                themeForm.target = 'form-target';
                 themeForm.submit();
+                
+                // Assume success after 2 seconds
+                setTimeout(() => {
+                    handleSuccess();
+                }, 2000);
             }
             
-            // Helper function to handle errors
-            function handleThemeSelectionError(message) {
-                console.error(message);
+            // Common success handler
+            function handleSuccess() {
+                // Hide theme selection and update UI
+                themeSelection.classList.remove('visible');
+                statusMessage.textContent = 'Processing selected theme...';
                 
-                // If this is our first XHR error, try form submission
-                if (!xhrAttemptFailed) {
-                    xhrAttemptFailed = true;
-                    submitWithForm(themeIdStr);
-                    return;
+                // Make sure we continue checking status
+                if (!checkInterval) {
+                    checkInterval = setInterval(checkStatus, 2000);
                 }
-                
-                isSubmitting = false;
-                // Reset UI state
-                document.querySelectorAll('.theme-card').forEach(card => {
-                    card.classList.remove('selected', 'processing');
-                });
-                document.querySelector('.loading-spinner').style.display = 'none';
-                themeSelection.classList.add('visible');
-                alert(`Failed to submit theme selection: ${message}`);
             }
-            
-            // Send the request
-            xhr.send(JSON.stringify(requestBody));
         };
         
         // Check status immediately and then every 2 seconds
