@@ -138,9 +138,9 @@
                         document.querySelector('.loading-spinner').style.display = 'none';
                         
                         // Populate themes
-                        themesContainer.innerHTML = data.themes.map(theme => `
+                        themesContainer.innerHTML = data.themes.map((theme, index) => `
                             <div class="theme-card" 
-                                 onclick="selectTheme('${theme.id}')">
+                                 onclick="selectTheme(${index + 1})">
                                 <div class="theme-title">${theme.title}</div>
                                 <div class="theme-description">${theme.description}</div>
                             </div>
