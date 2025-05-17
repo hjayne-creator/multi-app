@@ -66,6 +66,9 @@
         }
     </style>
     
+    <!-- Global shared styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='global.css') }}">
+    
     {% block head %}{% endblock %}
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">

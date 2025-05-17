@@ -4,18 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Content Apps Hub</title>
-    <link rel="stylesheet" href="{{ url_for('main.static', filename='main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='global.css') }}">
 </head>
 <body>
     <div class="container">
-        <h1>Welcome to the Content Apps Hub</h1>
-        <div class="app-links">
-            <a href="{{ url_for('main.index') }}">Home</a>
-            <a href="{{ url_for('content_plan.index') }}">Content Plan</a>
-            <a href="{{ url_for('topic_competitors.index') }}">Topic Competitors</a>
-            <a href="{{ url_for('content_gaps.index') }}">Content Gaps</a>
-
+        <h1 class="text-4xl font-bold mb-6">Welcome to the Content Apps Hub</h1>
+        <div class="nav-links">
+            <a href="{{ url_for('main.index') }}" style="background-color: #1e293b;">Home</a>
+            <a href="{{ url_for('content_plan.index') }}" style="background-color: #3498db;">Content Plan</a>
+            <a href="{{ url_for('topic_competitors.index') }}" style="background-color: #9b59b6;">Topic Competitors</a>
+            <a href="{{ url_for('content_gaps.index') }}" style="background-color: #27ae60;">Content Gaps</a>
         </div>
     </div>
 </body>
+<!-- Fathom - beautiful, simple website analytics -->
+<script src="https://cdn.usefathom.com/script.js" data-site="JUDLZNZE" defer></script>
+<!-- / Fathom -->
 </html>

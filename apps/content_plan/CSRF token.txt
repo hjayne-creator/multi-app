@@ -1,0 +1,3 @@
+The client-side JavaScript wasn't properly sending the CSRF token in the AJAX requests
+The form submission fallback wasn't properly configured with the token
+The route needed stronger CSRF exemption handling

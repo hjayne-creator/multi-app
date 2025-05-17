@@ -2,6 +2,10 @@
 
 {% block title %}Content Gaps{% endblock %}
 
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('content_gaps.static', filename='style.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="container max-w-4xl mx-auto p-6">
     <header class="mb-10 text-center">
